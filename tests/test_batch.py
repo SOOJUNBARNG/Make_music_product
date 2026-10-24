@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from musicgen_cpu.batch import load_requirements, run_batch, select_tracks
+from musicgen_cpu.batch import load_requirements, needs_chaining, run_batch, select_tracks
 from musicgen_cpu.postprocess import make_loopable, normalize
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -82,6 +82,12 @@ def test_bundled_requirements_cover_all_45_boxes():
     _, tracks = load_requirements(ROOT / "music_requirements.txt")
     assert len(tracks) == 45
     assert sum(t.priority == 1 for t in tracks) == 10
+
+
+def test_bundled_requirements_fit_in_one_generation():
+    settings, tracks = load_requirements(ROOT / "music_requirements.txt")
+    too_long = [t.name for t in tracks if not t.copy_of and needs_chaining(t, settings)]
+    assert too_long == []
 
 
 def test_make_loopable_seam_is_continuous():

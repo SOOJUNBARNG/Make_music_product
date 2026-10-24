@@ -45,6 +45,11 @@ class Track:
         return f"{self.prompt}, {style}" if style else self.prompt
 
 
+def needs_chaining(track: Track, settings: Settings) -> bool:
+    """1 回の生成に収まらず、継ぎ足し生成が必要になるか。"""
+    return track.duration + settings.loop_crossfade > settings.chunk_seconds
+
+
 def _one_line(text: str) -> str:
     return " ".join(text.split())
 
@@ -92,6 +97,11 @@ def load_requirements(path: str | Path) -> tuple[Settings, list[Track]]:
             raise ValueError(f"[{name}] に prompt がありません")
         if track.extra:
             logger.warning("[%s] 未知のキーを無視します: %s", name, ", ".join(track.extra))
+        if not track.copy_of and needs_chaining(track, settings):
+            logger.warning(
+                "[%s] %.0f 秒 + クロスフェード %.0f 秒が %.0f 秒を超えるため継ぎ足し生成になります",
+                name, track.duration, settings.loop_crossfade, settings.chunk_seconds,
+            )
         tracks.append(track)
     return settings, tracks
 

@@ -9,7 +9,8 @@
 # 書式 (INI 形式):
 #   [상자 이름]          ← 出力ファイル名になる (例: [trial.storm] → trial.storm.wav)
 #   priority = 1|2|3     ← README の ①必須 / ②あると良い / ③残り
-#   duration = 秒数      ← 30 秒を超える場合は 30 秒ずつ継ぎ足して生成
+#   duration = 秒数      ← 最大 28 秒推奨。28 + ループ用クロスフェード 2 秒 = 30 秒を 1 回で生成できる
+#                          (超えると継ぎ足し生成になり、曲のまとまりが崩れやすく時間もかかる)
 #   prompt   = 英語の説明 ← MusicGen は英語プロンプトの方が精度が高い
 #   gain_db  = -6        ← (任意) 音量。会話シーンは小さめに
 #   copy_of  = 別の상자  ← (任意) 生成せず別の曲をコピー
@@ -26,7 +27,7 @@ chunk_seconds = 30
 overlap_seconds = 10
 # 終わり→始まりを自然につなげる (ループ用) クロスフェード秒数
 loop_crossfade = 2.0
-default_duration = 45
+default_duration = 28
 guidance = 3.0
 # 全プロンプトの末尾に付ける共通スタイル (README「규격과 주의」より)
 style = instrumental, no vocals, seamless loop, soft gentle intro, peaceful, not martial, no battle music, high quality
@@ -37,56 +38,56 @@ style = instrumental, no vocals, seamless loop, soft gentle intro, peaceful, not
 
 [title]
 priority = 1
-duration = 90
+duration = 28
 prompt = tender and warm title theme, Korean gayageum and Japanese koto duet, low strings,
     feeling of two cats meeting across the sea, gentle anticipation, calm, East Asian traditional fusion
 
 [kr]
 priority = 1
-duration = 90
+duration = 28
 prompt = lively Korean traditional market music, gayageum, daegeum bamboo flute, janggu drum,
     semachi and gutgeori rhythm in 9/8 and 12/8, friendly bustling Joseon town, cheerful folk
 
 [jp]
 priority = 1
-duration = 90
+duration = 28
 prompt = clear and neat Japanese harbor town music, koto, shakuhachi flute, small taiko drum,
     calm Edo period port village, elegant, pentatonic, bright morning
 
 [cn]
 priority = 1
-duration = 90
+duration = 28
 prompt = bustling Chinese Ming dynasty market street with red lanterns, guzheng, erhu,
     wooden clapper percussion, festive but relaxed, traditional Chinese music
 
 [isle]
 priority = 1
-duration = 90
+duration = 28
 prompt = bright sandy island harbor where merchants of two nations meet, koto and guzheng together,
     light hand percussion, sunny, sea breeze, East Asian fusion, cheerful and easygoing
 
 [southsea]
 priority = 1
-duration = 90
+duration = 28
 prompt = relaxed tropical Southeast Asian harbor, gamelan style metallic percussion, bamboo instruments,
     angklung, palm trees and stilt village over water, slow lazy afternoon, warm
 
 [indian]
 priority = 1
-duration = 90
+duration = 28
 prompt = wide Indian Ocean waiting for the monsoon wind, sitar, tabla, Arabic oud,
     spice-scented breeze, expansive and calm, Indian and Middle Eastern fusion, drone
 
 [scene]
 priority = 1
-duration = 45
+duration = 28
 gain_db = -6
 prompt = quiet calm storytelling background music, soft strings with gayageum and koto,
     gentle and sparse, ambient, sits under dialogue
 
 [trial]
 priority = 1
-duration = 45
+duration = 28
 prompt = tense but not combat music, low sustained strings, deep taiko drum pulses, howling wind,
     suspenseful sea hardship, slow, mysterious
 
@@ -102,7 +103,7 @@ prompt = short bright celebration jingle, Korean buk drum and bamboo flute, joyf
 
 [scene.opening]
 priority = 2
-duration = 60
+duration = 28
 gain_db = -4
 prompt = beginning of a journey, spring day at a harbor, gentle gayageum and koto, soft strings,
     hopeful, cherry blossoms, light and fresh
@@ -114,31 +115,31 @@ copy_of = scene.opening
 
 [scene.festival]
 priority = 2
-duration = 60
+duration = 28
 prompt = joyful welcome festival for the Korean envoy in Edo, Korean and Japanese traditional instruments
     playing together, gayageum, koto, janggu, taiko, piri and shinobue flutes, celebratory, colorful
 
 [scene.cape]
 priority = 2
-duration = 60
+duration = 28
 prompt = emotional climax at the Cape of Good Hope, promise kept at the end of the sea,
     sweeping orchestral strings with gayageum and koto, vast, moving, triumphant but gentle
 
 [trial.storm]
 priority = 2
-duration = 45
+duration = 28
 prompt = violent sea storm, rough waves, pounding taiko and buk drums, dark low strings, thunder,
     intense but not battle music
 
 [trial.pirates]
 priority = 2
-duration = 45
+duration = 28
 prompt = suspicious pirate ship approaching, sneaky tense mood, plucked low strings, muted percussion,
     mysterious, not fighting
 
 [scene.dhowRace]
 priority = 2
-duration = 60
+duration = 28
 prompt = exciting dhow boat race festival on the sea, Swahili style drums, hand claps,
     East African rhythm, upbeat and fun, celebratory
 
@@ -148,150 +149,150 @@ prompt = exciting dhow boat race festival on the sea, Swahili style drums, hand 
 
 [scene.voyage]
 priority = 3
-duration = 45
+duration = 28
 gain_db = -6
 prompt = invitation to sail the sea together, hopeful gayageum melody, soft strings, gentle anticipation
 
 [scene.voyageJp]
 priority = 3
-duration = 45
+duration = 28
 gain_db = -6
 prompt = invitation to sail the sea together, hopeful koto melody, soft strings, gentle anticipation
 
 [scene.tsushima]
 priority = 3
-duration = 45
+duration = 28
 gain_db = -6
 prompt = first arrival after crossing the sea to Tsushima island, wonder and relief, koto and daegeum, calm waves
 
 [scene.busanJp]
 priority = 3
-duration = 45
+duration = 28
 gain_db = -6
 prompt = first arrival after crossing the sea to Busan harbor, wonder and relief, gayageum and shakuhachi, calm waves
 
 [scene.hakata]
 priority = 3
-duration = 45
+duration = 28
 gain_db = -6
 prompt = warm heartfelt story in Hakata port town, gentle koto and gayageum, soft and nostalgic
 
 [scene.hakataJp]
 priority = 3
-duration = 45
+duration = 28
 gain_db = -6
 prompt = warm heartfelt story in Hakata port town, gentle shakuhachi and koto, soft and nostalgic
 
 [scene.envoy]
 priority = 3
-duration = 45
+duration = 28
 gain_db = -6
 prompt = news of the Joseon diplomatic envoy, dignified and hopeful, daegeum flute and soft strings, stately but calm
 
 [scene.ming]
 priority = 3
-duration = 45
+duration = 28
 gain_db = -6
 prompt = arriving in Ming China, grand port, guzheng and erhu, awe and curiosity, calm
 
 [scene.silverSea]
 priority = 3
-duration = 45
+duration = 28
 gain_db = -6
 prompt = shimmering silver sea trade route, glittering guzheng arpeggios, soft strings, dreamy
 
 [scene.jeongpa]
 priority = 3
-duration = 45
+duration = 28
 gain_db = -6
 prompt = righteous martial arts sect, noble and calm, guqin and xiao flute, wuxia atmosphere, not combat
 
 [scene.magyo]
 priority = 3
-duration = 45
+duration = 28
 gain_db = -6
 prompt = mysterious dark martial arts sect, shadowy and enigmatic, low erhu and drones, wuxia, not combat
 
 [scene.peaceCall]
 priority = 3
-duration = 45
+duration = 28
 gain_db = -6
 prompt = call for peace between rival sects, gentle reconciliation, guzheng and soft strings, hopeful
 
 [scene.peaceTea]
 priority = 3
-duration = 45
+duration = 28
 gain_db = -6
 prompt = peaceful tea gathering at West Lake, serene guqin, xiao flute, water and birds, tranquil
 
 [scene.southSea]
 priority = 3
-duration = 45
+duration = 28
 gain_db = -6
 prompt = arriving in the southern seas, tropical warmth, gamelan bells and bamboo, wonder
 
 [scene.monsoon]
 priority = 3
-duration = 45
+duration = 28
 gain_db = -6
 prompt = waiting for the monsoon wind in Malacca, humid and patient, gamelan and soft strings, contemplative
 
 [scene.indianOcean]
 priority = 3
-duration = 45
+duration = 28
 gain_db = -6
 prompt = arriving across the Indian Ocean, vast horizon, sitar and oud, awe, warm drones
 
 [scene.cloveguild]
 priority = 3
-duration = 45
+duration = 28
 gain_db = -6
 prompt = clove spice merchant guild, proud and aromatic, oud and frame drum, Arabian market, calm
 
 [scene.nutmegguild]
 priority = 3
-duration = 45
+duration = 28
 gain_db = -6
 prompt = nutmeg spice merchant guild, warm and sly, gamelan and oud, island trade, calm
 
 [scene.spiceCall]
 priority = 3
-duration = 45
+duration = 28
 gain_db = -6
 prompt = call for reconciliation between spice guilds, hopeful sitar and oud duet, gentle
 
 [scene.spiceBlend]
 priority = 3
-duration = 45
+duration = 28
 gain_db = -6
 prompt = tea of reconciliation blended with spices, warm and friendly, sitar, oud, soft tabla, peaceful
 
 [scene.kaskazi]
 priority = 3
-duration = 45
+duration = 28
 gain_db = -6
 prompt = Kaskazi northeast monsoon wind family, dry steady wind, East African kalimba and drums, proud
 
 [scene.kusi]
 priority = 3
-duration = 45
+duration = 28
 gain_db = -6
 prompt = Kusi southeast monsoon wind family, cool strong wind, East African kalimba, flute, calm
 
 [scene.windCall]
 priority = 3
-duration = 45
+duration = 28
 gain_db = -6
 prompt = the wind families reconcile, two winds meet, kalimba and oud together, hopeful and warm
 
 [trial.fog]
 priority = 3
-duration = 45
+duration = 28
 prompt = thick fog and hidden reefs, eerie and cautious, low drones, distant shakuhachi, sparse percussion, tense
 
 [trial.fever]
 priority = 3
-duration = 45
+duration = 28
 prompt = sailors struck by fever, worried and heavy, slow low strings, faint heartbeat drum, somber
 
 [goal.0]
@@ -306,5 +307,5 @@ prompt = bigger achievement celebration, gayageum and koto flourish with drums, 
 
 [goal.2]
 priority = 3
-duration = 30
+duration = 28
 prompt = grand achievement celebration, full ensemble of East Asian instruments, buk and taiko drums, triumphant and joyful
