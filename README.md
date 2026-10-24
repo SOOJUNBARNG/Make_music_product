@@ -41,7 +41,10 @@ CPU では **musicgen-small** を既定にしています。medium は small の
 
 ## セットアップ
 
-Python 3.10 以上の仮想環境ならどれでも使えます (動作確認: Python 3.12 + torch 2.12 / transformers 4.56 と 5.20)。
+Python 3.10 以上の仮想環境ならどれでも使えます。
+
+- 音楽生成まで確認済み: Python 3.12 + torch 2.14 + transformers 5.20
+- 未確認: transformers 4.56 (torch 2.12) では、ユニットテストは通っていますが、実際の音楽生成はまだ確認していません
 既存の仮想環境を有効にして、必要なモジュールを入れてください。
 
 ```bash
