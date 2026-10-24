@@ -1,6 +1,28 @@
 # Make_music_product
 
 Meta の [MusicGen](https://huggingface.co/facebook/musicgen-medium) を **CPU だけで** 動かして、テキストから音楽を作るための基盤です。
+GPU なしの Mac / PC で、要件テキストファイルに書いたゲーム BGM を一括生成できます。
+
+## クイックスタート
+
+```bash
+python3.12 -m venv .venv && .venv/bin/pip install -e ".[dev]"
+```
+
+```bash
+.venv/bin/python make_music.py music_requirements.txt --priority 1
+```
+
+これで `music-source/` に必須 10 曲の WAV ができます。詳しくは下の各節を参照してください。
+
+## 機能
+
+- **CPU 推論**: `facebook/musicgen-small` を既定に、fp32・高性能コアのみで推論
+- **30 秒を超える曲**: 直前の音を音声プロンプトにして継ぎ足し、1 分半〜3 分の曲も生成
+- **ループ用の仕上げ**: 終わり→始まりのクロスフェード、ピーク正規化、曲ごとの音量 (`gain_db`)
+- **要件ファイル駆動**: [music_requirements.txt](music_requirements.txt) を書き換えるだけで曲の追加・変更ができる
+- **中断・再開**: 生成済みの曲はスキップ。書き込み途中のファイルは残らない
+- **CLI / Python API**: `musicgen-cpu generate` で単発生成、`MusicGenerator` でスクリプトから利用
 
 ## モデル選定
 
@@ -44,7 +66,7 @@ python3.12 -m venv .venv
 
 ## 要件ファイルから全曲をまとめて作る
 
-ゲーム用の 45 曲 (README_music.md の「상자」) の要件を [music_requirements.txt](music_requirements.txt) にまとめています。
+ゲーム用の 45 曲 (ゲーム側の音楽仕様 README_music.md にある「상자」) の要件を [music_requirements.txt](music_requirements.txt) にまとめています。
 このファイルを読んで、上から順に全曲を生成します。
 
 ```bash
@@ -105,13 +127,26 @@ save_wav("trailer.wav", result.audio, result.sample_rate)
 ## 構成
 
 ```
+make_music.py            要件ファイルを読んで全曲を生成するエントリポイント
+music_requirements.txt   45 曲ぶんの要件 (プロンプト・長さ・優先度・音量)
 src/musicgen_cpu/
-  config.py     モデル定義 (ModelSpec) と生成パラメータ (GenerationConfig)
-  generator.py  MusicGenerator: モデルの遅延ロードと CPU 推論
-  audio.py      WAV 書き出し (標準ライブラリの wave を使用)
-  cli.py        musicgen-cpu コマンド
-tests/          モデル不要のユニットテスト
+  config.py      モデル定義 (ModelSpec) と生成パラメータ (GenerationConfig)
+  generator.py   MusicGenerator: モデルの遅延ロード、CPU 推論、長尺の継ぎ足し生成
+  batch.py       要件ファイルの読み込みと連続生成 (スキップ・再開・コピー)
+  postprocess.py ループ用クロスフェードと音量調整
+  audio.py       WAV 書き出し (標準ライブラリの wave を使用)
+  cli.py         musicgen-cpu コマンド (models / generate / batch)
+tests/           モデル不要のユニットテスト
 ```
+
+## トラブルシューティング
+
+- **極端に遅い / 進まない**: ほとんどの場合メモリ不足によるスワップです。アクティビティモニタの「メモリプレッシャー」が黄〜赤なら、
+  他のアプリを閉じるか再起動してから実行してください。8GB RAM の Mac では空きメモリ 3GB 以上が目安です
+- **初回が遅い**: モデル (約 2.4GB) のダウンロードが入ります。2 回目以降は `~/.cache/huggingface` のキャッシュを使います
+- **途中で止めたい**: Ctrl+C で止めて大丈夫です。同じコマンドを再実行すると、完成していない曲から再開します
+- **音のイメージが違う**: `music_requirements.txt` の `prompt` を英語で具体的に書き直し、`--only <상자> --overwrite` で作り直します。
+  `seed` を変えると同じプロンプトでも別の曲になります
 
 ## テスト
 
