@@ -1,9 +1,9 @@
 """要件テキストファイルを読んで全曲を連続生成する。
 
-    .venv/bin/python make_music.py music_requirements.txt
-    .venv/bin/python make_music.py music_requirements.txt --priority 1      # ① 必須 10 曲だけ
-    .venv/bin/python make_music.py music_requirements.txt --only title kr   # 指定した상자だけ
-    .venv/bin/python make_music.py music_requirements.txt --dry-run         # 生成せず一覧表示
+    python make_music.py music_requirements.txt
+    python make_music.py music_requirements.txt --priority 1      # ① 必須 10 曲だけ
+    python make_music.py music_requirements.txt --only title kr   # 指定した상자だけ
+    python make_music.py music_requirements.txt --dry-run         # 生成せず一覧表示
 """
 
 import sys

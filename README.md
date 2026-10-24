@@ -6,11 +6,15 @@ GPU なしの Mac / PC で、要件テキストファイルに書いたゲーム
 ## クイックスタート
 
 ```bash
-python3.12 -m venv .venv && .venv/bin/pip install -e ".[dev]"
+source /path/to/your-venv/bin/activate
 ```
 
 ```bash
-.venv/bin/python make_music.py music_requirements.txt --priority 1
+pip install -r requirements.txt
+```
+
+```bash
+python make_music.py music_requirements.txt --priority 1
 ```
 
 これで `music-source/` に必須 10 曲の WAV ができます。詳しくは下の各節を参照してください。
@@ -37,12 +41,21 @@ CPU では **musicgen-small** を既定にしています。medium は small の
 
 ## セットアップ
 
+Python 3.10 以上の仮想環境ならどれでも使えます (動作確認: Python 3.12 + torch 2.12 / transformers 4.56 と 5.20)。
+既存の仮想環境を有効にして、必要なモジュールを入れてください。
+
 ```bash
-python3.12 -m venv .venv
+source /path/to/your-venv/bin/activate
 ```
 
 ```bash
-.venv/bin/pip install -e ".[dev]"
+pip install -r requirements.txt
+```
+
+`make_music.py` はパッケージをインストールしなくても動きます。`musicgen-cpu` コマンドも使いたい場合だけ、追加で次を実行します。
+
+```bash
+pip install -e .
 ```
 
 初回の生成時に Hugging Face からモデルが自動でダウンロードされます (small で約 2.4GB)。
@@ -50,7 +63,7 @@ python3.12 -m venv .venv
 ## 使い方
 
 ```bash
-.venv/bin/musicgen-cpu generate "lo-fi hip hop beat with mellow piano and vinyl crackle" -d 10 --seed 42 -v
+musicgen-cpu generate "lo-fi hip hop beat with mellow piano and vinyl crackle" -d 10 --seed 42 -v
 ```
 
 - プロンプトは **英語** で書くと精度が高くなります (学習データが英語のため)
@@ -59,7 +72,7 @@ python3.12 -m venv .venv
 - 複数プロンプトを渡すことも、`-f prompts.txt` (1 行 1 プロンプト) で指定することもできます
 
 ```bash
-.venv/bin/musicgen-cpu models
+musicgen-cpu models
 ```
 
 主なオプション: `--guidance` (プロンプトへの忠実度、既定 3.0)、`--temperature`、`--top-k`、`--top-p`、`--batch-size`、`--threads`。
@@ -70,7 +83,7 @@ python3.12 -m venv .venv
 このファイルを読んで、上から順に全曲を生成します。
 
 ```bash
-.venv/bin/python make_music.py music_requirements.txt
+python make_music.py music_requirements.txt
 ```
 
 - 出力先は `music-source/<상자>.wav` で、そのまま `tools/add-music.sh` に渡せます
@@ -82,15 +95,15 @@ python3.12 -m venv .venv
 よく使うオプション:
 
 ```bash
-.venv/bin/python make_music.py music_requirements.txt --priority 1
+python make_music.py music_requirements.txt --priority 1
 ```
 
 ```bash
-.venv/bin/python make_music.py music_requirements.txt --only title kr
+python make_music.py music_requirements.txt --only title kr
 ```
 
 ```bash
-.venv/bin/python make_music.py music_requirements.txt --dry-run
+python make_music.py music_requirements.txt --dry-run
 ```
 
 `--priority 1` は ① 必須 10 曲だけ、`--only` は指定した상자だけ、`--dry-run` は生成せずに一覧とプロンプトを表示します。
@@ -151,5 +164,5 @@ tests/           モデル不要のユニットテスト
 ## テスト
 
 ```bash
-.venv/bin/pytest
+PYTHONPATH=src python -m pytest
 ```
