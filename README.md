@@ -333,6 +333,7 @@ copy_of = scene.opening  # 任意: 生成せず別の曲をコピー (prompt な
 | `quota` で「足りません」 | 表示された割り当ての増加を申請する (「手順 2」を参照) |
 | `VM makemusic-l4 がありません` | まだ作成していないか、別のゾーンにある。`infra/.vm-zone` のゾーンを確認する |
 | 初回の `ssh`・`setup` で SSH 鍵の作成メッセージが出る | 初回だけ gcloud が鍵を作ります。そのまま進めて大丈夫 |
+| `Connection refused` で `run` や `fetch` が止まる | VM の起動直後で SSH がまだ準備できていない。今は自動で最大 5 分待つようにしてあるので、それでも出るときは同じコマンドを再実行する |
 | `setup` が「GPU ドライバの準備を待っています」のまま進まない | 10 分待っても進まなければ `infra/gcp.sh ssh` でログインし、`nvidia-smi` を実行して表示を確認する |
 | `setup` の `uv sync` やダウンロードで失敗 | ネットワークの一時的なエラーのことが多い。もう一度 `setup` を実行する |
 | 生成が `vllm` 関係のエラーで止まる | `music_requirements.txt` の `lm_backend = pt` に変えて `run` し直す |

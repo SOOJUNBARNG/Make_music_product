@@ -41,6 +41,19 @@ die() { printf 'エラー: %s\n' "$*" >&2; exit 1; }
 
 vm_status() { gc compute instances describe "$VM_NAME" --zone "$ZONE" --format='value(status)' 2>/dev/null || true; }
 
+# 起動直後は SSH がまだ受け付けないので、つながるまで待つ (最大 5 分)
+wait_ssh() {
+  local i
+  for i in $(seq 1 30); do
+    if gc compute ssh "$VM_NAME" --zone "$ZONE" --quiet --ssh-flag="-o ConnectTimeout=10" --command true >/dev/null 2>&1; then
+      return 0
+    fi
+    (( i == 1 )) && echo "VM の SSH が使えるようになるのを待っています..."
+    sleep 10
+  done
+  die "VM に SSH で接続できません (5 分待ちました)。少し待ってから同じコマンドを再実行してください"
+}
+
 ensure_running() {
   local st; st="$(vm_status)"
   [[ -n "$st" ]] || die "VM $VM_NAME がありません。先に infra/gcp.sh create を実行してください"
@@ -48,6 +61,7 @@ ensure_running() {
     log "VM を起動します ($st → RUNNING)"
     gc compute instances start "$VM_NAME" --zone "$ZONE"
   fi
+  wait_ssh
 }
 
 cmd_enable() {
@@ -202,7 +216,7 @@ cmd_fetch() {
   mkdir -p "$ROOT/music-source"
   log "WAV を $ROOT/music-source/ にコピーします"
   gc compute scp --zone "$ZONE" --quiet "$VM_NAME:$REMOTE_DIR/music-source/*.wav" "$ROOT/music-source/"
-  ls "$ROOT/music-source" | grep -c '\.wav$' | sed 's/^/手元の曲数: /'
+  echo "手元の曲数: $(find "$ROOT/music-source" -maxdepth 1 -name '*.wav' | wc -l | tr -d ' ')"
 }
 
 cmd_ssh() { ensure_running; gc compute ssh "$VM_NAME" --zone "$ZONE"; }
