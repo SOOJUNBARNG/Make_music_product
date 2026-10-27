@@ -37,6 +37,10 @@ infra/gcp.sh quota
 infra/gcp.sh create
 ```
 
+Spot の L4 はゾーンによって空きが無いことがあります (`ZONE_RESOURCE_POOL_EXHAUSTED`)。
+`create` は us-central1-a → b → c の順に試し、作れたゾーンを `infra/.vm-zone` に記録します。以降のコマンドは自動でそのゾーンを使います。
+全部のゾーンで空きが無いときは、時間をおいて再実行してください。
+
 **4. ACE-Step 1.5 とモデルを VM に入れる** (初回のみ。10〜20 分ほど)
 
 ```bash

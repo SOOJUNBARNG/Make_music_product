@@ -3,7 +3,7 @@
 #
 #   infra/gcp.sh enable      Compute Engine API を有効化
 #   infra/gcp.sh quota       L4 GPU の割り当てを確認
-#   infra/gcp.sh create      VM を作成
+#   infra/gcp.sh create      VM を作成 (空きの無いゾーンは飛ばして次のゾーンを試す)
 #   infra/gcp.sh setup       VM に ACE-Step 1.5 とモデルを入れる (初回のみ・再実行しても安全)
 #   infra/gcp.sh run [引数]  コードと要件ファイルを送って生成開始 (例: run --priority 1)
 #   infra/gcp.sh status      VM の状態と生成ログの末尾を表示
@@ -19,10 +19,16 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 
 # 環境変数で渡した値を gcp.env より優先する
-_overrides="$(env | grep -E '^(PROJECT|ZONE|VM_NAME|MACHINE_TYPE|SPOT|DISK_SIZE_GB|IMAGE_FAMILY|IMAGE_PROJECT|ACESTEP_REPO|AUTO_SHUTDOWN)=' || true)"
+_overrides="$(env | grep -E '^(PROJECT|ZONE|ZONE_CANDIDATES|VM_NAME|MACHINE_TYPE|SPOT|DISK_SIZE_GB|IMAGE_FAMILY|IMAGE_PROJECT|ACESTEP_REPO|AUTO_SHUTDOWN)=' || true)"
 # shellcheck source=gcp.env
 source "$HERE/gcp.env"
 while IFS= read -r kv; do [[ -n "$kv" ]] && export "${kv?}"; done <<< "$_overrides"
+
+# create で実際に VM を作れたゾーンを覚えておき、以降のコマンドはそのゾーンを使う
+ZONE_FILE="$HERE/.vm-zone"
+ZONE_FROM_ENV=0
+if grep -q '^ZONE=' <<< "$_overrides"; then ZONE_FROM_ENV=1; fi
+if (( ! ZONE_FROM_ENV )) && [[ -s "$ZONE_FILE" ]]; then ZONE="$(cat "$ZONE_FILE")"; fi
 
 REGION="${ZONE%-*}"
 REMOTE_DIR="makemusic"           # VM のホーム直下
@@ -102,21 +108,39 @@ pick_image_family() {
 }
 
 cmd_create() {
-  [[ -z "$(vm_status)" ]] || die "VM $VM_NAME はすでにあります (状態: $(vm_status))"
+  [[ -z "$(vm_status)" ]] || die "VM $VM_NAME はすでにあります (ゾーン: $ZONE, 状態: $(vm_status))"
   local family; family="$(pick_image_family)"
   local spot_args=()
   [[ "$SPOT" == true ]] && spot_args=(--provisioning-model=SPOT --instance-termination-action=STOP)
-  log "VM を作成: $VM_NAME ($MACHINE_TYPE, $ZONE, spot=$SPOT, image=$family)"
-  gc compute instances create "$VM_NAME" \
-    --zone "$ZONE" \
-    --machine-type "$MACHINE_TYPE" \
-    --maintenance-policy TERMINATE \
-    ${spot_args[@]+"${spot_args[@]}"} \
-    --image-family "$family" --image-project "$IMAGE_PROJECT" \
-    --boot-disk-size "${DISK_SIZE_GB}GB" --boot-disk-type pd-balanced \
-    --metadata install-nvidia-driver=True \
-    --scopes cloud-platform
-  echo "作成しました。ドライバのインストールに数分かかるので、少し待ってから infra/gcp.sh setup を実行してください"
+  # ZONE を環境変数で指定したときはそのゾーンだけ、それ以外は候補を順に試す
+  local zones="$ZONE" z out
+  (( ZONE_FROM_ENV )) || zones="${ZONE_CANDIDATES:-$ZONE}"
+  for z in $zones; do
+    log "VM を作成: $VM_NAME ($MACHINE_TYPE, $z, spot=$SPOT, image=$family)"
+    if out="$(gc compute instances create "$VM_NAME" \
+        --zone "$z" \
+        --machine-type "$MACHINE_TYPE" \
+        --maintenance-policy TERMINATE \
+        ${spot_args[@]+"${spot_args[@]}"} \
+        --image-family "$family" --image-project "$IMAGE_PROJECT" \
+        --boot-disk-size "${DISK_SIZE_GB}GB" --boot-disk-type pd-balanced \
+        --metadata install-nvidia-driver=True \
+        --scopes cloud-platform 2>&1)"; then
+      # ディスクがイメージより大きいという警告は、Deep Learning VM が起動時に自動で広げるので無視してよい
+      grep -vE "^WARNING: Some requests generated warnings|^ - Disk size: .* is larger than image size|resize the root repartition|add-persistent-disk#resize_pd" <<< "$out" || true
+      echo "$z" > "$ZONE_FILE"
+      echo "作成しました (ゾーン: $z)。以降のコマンドは自動でこのゾーンを使います"
+      echo "ドライバのインストールに数分かかるので、少し待ってから infra/gcp.sh setup を実行してください"
+      return 0
+    fi
+    if grep -qE "ZONE_RESOURCE_POOL_EXHAUSTED|does not have enough resources" <<< "$out"; then
+      echo "→ $z は今 L4 の空きがありません。次のゾーンを試します"
+      continue
+    fi
+    printf '%s\n' "$out" >&2
+    die "VM の作成に失敗しました (ゾーン: $z)"
+  done
+  die "どのゾーン ($zones) にも今 L4 の空きがありません。時間をおいて (数十分〜数時間) もう一度 infra/gcp.sh create を実行してください"
 }
 
 cmd_setup() {
@@ -187,6 +211,7 @@ cmd_delete() {
   read -r -p "VM $VM_NAME をディスクごと削除します。生成した曲は fetch 済みですか? [y/N] " yn
   [[ "$yn" == [yY] ]] || { echo 中止しました; return 1; }
   gc compute instances delete "$VM_NAME" --zone "$ZONE" --quiet
+  rm -f "$ZONE_FILE"
 }
 
 usage() { sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
