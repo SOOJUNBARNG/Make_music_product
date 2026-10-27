@@ -2,12 +2,14 @@
 
 テキストからゲーム BGM を生成するプロジェクトです。
 Google Cloud の L4 GPU で [ACE-Step 1.5](https://github.com/ACE-Step/ACE-Step-1.5) を動かし、
-要件テキストファイル [music_requirements.txt](music_requirements.txt) に書いた 45 曲をまとめて生成します。
+要件テキストファイル [music_requirements.txt](music_requirements.txt) に書いた 56 曲をまとめて生成します。
+曲の要件は、ゲーム側の音楽仕様 `docs/music-brief.md` (2026-10-27、第1部 45 상자 + 第2部 11 상자) に合わせています。
 
 - **モデル**: ACE-Step 1.5 XL turbo (DiT 4B) + 5Hz LM 1.7B。MIT ライセンスで商用利用可。1 回で最大 10 分まで作れる
 - **GPU**: GCP プロジェクト `jpix-it` の `g2-standard-8` (NVIDIA L4 24GB)。既定は Spot
 - **出力**: `music-source/<상자>.wav` (48kHz ステレオ・16bit)。ループ用に終わりと始まりをクロスフェード済み
 - 計画と選定理由: [docs/gpu-plan.md](docs/gpu-plan.md)
+- **現在の状況 (2026-10-27)**: Compute Engine API は有効化済み。`GPUS_ALL_REGIONS` の割り当てが 0 のため、増加を申請して承認待ちの段階です
 - CPU で MusicGen small を動かす旧構成: [OLD/](OLD/)
 
 ## 手順
@@ -47,7 +49,7 @@ infra/gcp.sh setup
 infra/gcp.sh run --priority 1
 ```
 
-引数はそのまま `make_music.py` に渡ります。`--priority 1` は ① 必須 10 曲だけで、引数なしなら全 45 曲です。
+引数はそのまま `make_music.py` に渡ります。`--priority 1` は「꼭 필요한 곡」12 曲 (第1部 10 + 第2部 2) だけで、引数なしなら全 56 曲です。
 生成が終わると VM は自動で停止します。
 
 **6. 進み具合の確認と回収**
@@ -76,9 +78,15 @@ Spot VM は Google の都合で停止されることがあります。生成済�
 
 [music_requirements.txt](music_requirements.txt) に 1 曲 1 セクションで書きます。
 
+- **プロンプト**: music-brief.md「7. AI 음악 도구용 프롬프트」にある 24 상자はそのまま使い、残りは「3. 상자 목록」の場面説明から作っています
+- **共通スタイル**: music-brief.md の共通文 (`instrumental, no vocals, seamless loop, ...`) に `soft gentle intro` を足して、全曲の末尾に付けます
+- **長さ**: 「4. 파일 규격」どおり、地域の曲 (기본 음악) 120 秒、場面・試練の曲 45〜60 秒、目標達成 20〜30 秒
+- **音量**: 会話シーン (`scene.*`) の曲は、台詞を邪魔しないよう全部 -6dB
+- **同じ曲を 2 つの名前で**: `scene.openingJp`・`scene.openingIn`・`scene.meetIn` は、対になる曲をコピーします (`copy_of`)
+
 ```ini
 [trial.storm]          # 상자 이름 = 出力ファイル名
-priority = 2           # ①=1 / ②=2 / ③=3
+priority = 2           # 꼭 필요=1 / 있으면 좋은=2 / 나머지=3
 duration = 45          # 秒 (10〜598)
 prompt = violent sea storm, pounding taiko drums, ...   # 英語で
 gain_db = -6           # 任意: 音量
@@ -101,7 +109,7 @@ python make_music.py music_requirements.txt --dry-run
 infra/gcp.sh            GCP の操作 (enable / quota / create / setup / run / status / fetch / stop / delete)
 infra/gcp.env           GCP の設定 (プロジェクト・ゾーン・マシン・Spot など)
 make_music.py           VM 上で全曲を生成するエントリポイント
-music_requirements.txt  45 曲ぶんの要件
+music_requirements.txt  56 曲ぶんの要件 (music-brief.md のプロンプトを使用)
 src/makemusic/
   requirements.py   要件ファイルの読み込みと検証
   runner.py         連続生成 (スキップ・再開・コピー・失敗しても続行)

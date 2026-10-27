@@ -75,16 +75,17 @@ cmd_quota() {
   read -r l4_limit l4_usage <<< "$(quota_of regions "$l4_metric")"
   printf '%-34s 上限 %3s  使用中 %3s\n' "GPUS_ALL_REGIONS (全体)" "$all_limit" "$all_usage"
   printf '%-34s 上限 %3s  使用中 %3s\n' "$l4_metric ($REGION)" "$l4_limit" "$l4_usage"
-  if (( all_limit - all_usage < 1 )); then ok=0; echo "→ GPUS_ALL_REGIONS が足りません"; fi
-  if (( l4_limit - l4_usage < 1 )); then ok=0; echo "→ $l4_metric ($REGION) が足りません"; fi
+  local short=()
+  if (( all_limit - all_usage < 1 )); then ok=0; short+=("「GPUS_ALL_REGIONS」"); fi
+  if (( l4_limit - l4_usage < 1 )); then ok=0; short+=("「${l4_metric}」(リージョン ${REGION})"); fi
   if (( ok )); then
     echo "OK: L4 を 1 枚使えます"
   else
     cat <<EOF
 
-割り当ての増加を申請してください (承認まで数分〜数日):
-  https://console.cloud.google.com/iam-admin/quotas?project=$PROJECT
-  上の画面で「GPUS_ALL_REGIONS」と「${l4_metric}」(リージョン ${REGION}) をそれぞれ 1 以上に。
+足りない割り当て: ${short[*]}
+上限を 1 以上にする申請をしてください (承認まで数分〜数日):
+  https://console.cloud.google.com/iam-admin/quotas?project=${PROJECT}
 EOF
     return 1
   fi

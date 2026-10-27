@@ -77,11 +77,17 @@ def test_invalid_requirements(tmp_path, track, error):
 
 def test_bundled_requirements():
     settings, tracks = load_requirements(ROOT / "music_requirements.txt")
-    assert len(tracks) == 45
-    assert sum(t.priority == 1 for t in tracks) == 10
-    regions = {"title", "kr", "jp", "cn", "isle", "southsea", "indian"}
-    # README_music.md: 地域の曲は 1 分 30 秒〜3 分
-    assert all(90 <= t.duration <= 180 for t in tracks if t.name in regions)
+    # music-brief.md (2026-10-27): 第1部 45 + 第2部 11 = 56 상자
+    assert len(tracks) == 56
+    assert sum(t.priority == 1 for t in tracks) == 12  # 第1部 10 + 第2部 2
+    regions = {"title", "kr", "jp", "cn", "isle", "southsea", "indian", "eu", "atl"}
+    by_name = {t.name: t for t in tracks}
+    # 「4. 파일 규격」: 기본 음악 1분 30초~3분, 이벤트 음악 30초~1분 (goal は 20〜40 秒)
+    assert all(90 <= by_name[n].duration <= 180 for n in regions)
+    events = [t for t in tracks if t.name not in regions and not t.copy_of]
+    assert all(20 <= t.duration <= 60 for t in events)
+    # 会話シーンの曲は台詞を邪魔しないよう全部小さめ
+    assert all(t.gain_db < 0 for t in tracks if t.name.startswith("scene") and not t.copy_of)
     assert [t.name for t in select_tracks(tracks, max_priority=1)][:2] == ["title", "kr"]
 
 
