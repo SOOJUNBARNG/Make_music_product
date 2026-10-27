@@ -11,15 +11,18 @@
 #   infra/gcp.sh ssh         VM にログイン
 #   infra/gcp.sh stop        VM を停止 (ディスク代だけかかる)
 #   infra/gcp.sh delete      VM をディスクごと削除 (課金が完全に止まる)
+#   infra/gcp.sh spot on|off 既存 VM を Spot / 通常料金に切り替える (VM 停止中に実行)
 #
 # 設定は infra/gcp.env。gcloud の既定プロジェクトは変更せず、毎回 --project を付ける。
+# setup・run・fetch・ssh が失敗したとき、setup が終わったときは VM を自動で停止する
+# (止めたくないときは KEEP_RUNNING=true を付ける)。
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 
 # 環境変数で渡した値を gcp.env より優先する
-_overrides="$(env | grep -E '^(PROJECT|ZONE|ZONE_CANDIDATES|VM_NAME|MACHINE_TYPE|SPOT|DISK_SIZE_GB|IMAGE_FAMILY|IMAGE_PROJECT|ACESTEP_REPO|AUTO_SHUTDOWN)=' || true)"
+_overrides="$(env | grep -E '^(PROJECT|ZONE|ZONE_CANDIDATES|VM_NAME|MACHINE_TYPE|SPOT|DISK_SIZE_GB|IMAGE_FAMILY|IMAGE_PROJECT|ACESTEP_REPO|AUTO_SHUTDOWN|KEEP_RUNNING)=' || true)"
 # shellcheck source=gcp.env
 source "$HERE/gcp.env"
 while IFS= read -r kv; do [[ -n "$kv" ]] && export "${kv?}"; done <<< "$_overrides"
@@ -33,6 +36,11 @@ if (( ! ZONE_FROM_ENV )) && [[ -s "$ZONE_FILE" ]]; then ZONE="$(cat "$ZONE_FILE"
 REGION="${ZONE%-*}"
 REMOTE_DIR="makemusic"           # VM のホーム直下
 ACESTEP_DIR="ACE-Step-1.5"
+KEEP_RUNNING="${KEEP_RUNNING:-false}"
+
+CMD=""             # 実行中のサブコマンド
+STARTED_HERE=0     # このコマンドで VM を起動したか
+GEN_STARTED=0      # run で VM 上の生成を開始できたか
 
 gc() { gcloud --project "$PROJECT" "$@"; }
 remote() { gc compute ssh "$VM_NAME" --zone "$ZONE" --quiet --command "$1"; }
@@ -45,6 +53,7 @@ vm_status() { gc compute instances describe "$VM_NAME" --zone "$ZONE" --format='
 wait_ssh() {
   local i
   for i in $(seq 1 30); do
+    [[ "$(vm_status)" == RUNNING ]] || die "VM が止まりました (状態: $(vm_status))"
     if gc compute ssh "$VM_NAME" --zone "$ZONE" --quiet --ssh-flag="-o ConnectTimeout=10" --command true >/dev/null 2>&1; then
       return 0
     fi
@@ -60,6 +69,7 @@ ensure_running() {
   if [[ "$st" != "RUNNING" ]]; then
     log "VM を起動します ($st → RUNNING)"
     gc compute instances start "$VM_NAME" --zone "$ZONE"
+    STARTED_HERE=1
   fi
   wait_ssh
 }
@@ -199,6 +209,7 @@ nohup bash -c '~/$ACESTEP_DIR/.venv/bin/python make_music.py music_requirements.
 echo 開始しました
 EOF
 )"
+  GEN_STARTED=1
   echo "進み具合: infra/gcp.sh status / 終わったら: infra/gcp.sh fetch"
   [[ "$AUTO_SHUTDOWN" == true ]] && echo "生成が終わると VM は自動で停止します"
   return 0
@@ -228,12 +239,81 @@ cmd_delete() {
   rm -f "$ZONE_FILE"
 }
 
-usage() { sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+cmd_spot() {
+  local mode="${1:-}" st
+  case "$mode" in
+    on)  local sched=(--provisioning-model=SPOT --instance-termination-action=STOP) ;;
+    off) local sched=(--provisioning-model=STANDARD --clear-instance-termination-action) ;;
+    *) die "infra/gcp.sh spot on (Spot) または infra/gcp.sh spot off (通常料金) を指定してください" ;;
+  esac
+  st="$(vm_status)"
+  [[ -n "$st" ]] || die "VM $VM_NAME がありません"
+  if [[ "$st" != TERMINATED ]]; then
+    log "切り替えのため VM を停止します"
+    gc compute instances stop "$VM_NAME" --zone "$ZONE"
+  fi
+  log "VM を $([[ $mode == on ]] && echo Spot || echo 通常料金) に切り替えます"
+  gc compute instances set-scheduling "$VM_NAME" --zone "$ZONE" "${sched[@]}"
+  echo "切り替えました。gcp.env の SPOT も合わせて変えておくと、次に create するときも同じ設定になります"
+}
+
+# Spot で回収 (preempted) されたかを、直近 15 分の操作履歴から調べる
+recently_preempted() {
+  local since; since="$(date -u -v-15M +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '15 min ago' +%Y-%m-%dT%H:%M:%SZ)"
+  [[ -n "$(gc compute operations list \
+      --filter="targetLink~/instances/$VM_NAME\$ AND operationType=compute.instances.preempted AND insertTime>=$since" \
+      --format='value(insertTime)' --limit=1 2>/dev/null)" ]]
+}
+
+# 失敗したら VM を止めて、動きっぱなしの課金を防ぐ
+finish() {
+  local rc=$?
+  trap - EXIT
+  case "$CMD" in setup|run|fetch|ssh) ;; *) exit "$rc" ;; esac
+  local st reason=""
+  st="$(vm_status)"
+  if [[ "$st" == RUNNING ]]; then
+    if (( rc != 0 )); then
+      # fetch・ssh は、もともと動いていた VM (生成中かもしれない) は止めない
+      if [[ "$CMD" == setup ]] || { [[ "$CMD" == run ]] && (( ! GEN_STARTED )); } || (( STARTED_HERE )); then
+        reason="失敗したので"
+      else
+        echo "VM は動いたままです (生成中かもしれないため止めていません)。不要なら infra/gcp.sh stop で止めてください"
+      fi
+    elif [[ "$CMD" == setup ]]; then
+      reason="セットアップが終わったので"
+    elif [[ "$CMD" != run ]] && (( STARTED_HERE )); then
+      reason="このコマンドのために起動したので"
+    fi
+    if [[ -n "$reason" ]]; then
+      if [[ "$KEEP_RUNNING" == true ]]; then
+        echo "KEEP_RUNNING=true のため VM は動いたままです。終わったら infra/gcp.sh stop で止めてください"
+      else
+        log "${reason} VM を自動で停止します (課金を止めるため)"
+        gc compute instances stop "$VM_NAME" --zone "$ZONE" --quiet \
+          || echo "VM の停止に失敗しました。infra/gcp.sh stop を実行してください" >&2
+      fi
+    fi
+  elif (( rc != 0 )) && [[ -n "$st" ]]; then
+    echo "VM は停止しています (状態: $st)。GPU の課金は止まっています"
+    if [[ "$SPOT" == true ]] || recently_preempted; then
+      if recently_preempted; then
+        echo "原因: Spot VM が Google に回収されました (preempted)。このゾーンは今 L4 が混み合っています"
+      fi
+      echo "対策: 時間をおいて再実行するか、通常料金に切り替えます (infra/gcp.sh spot off、約 0.85 ドル/時間)"
+    fi
+  fi
+  exit "$rc"
+}
+
+usage() { awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "${BASH_SOURCE[0]}"; }
 
 main() {
   local cmd="${1:-}"; shift || true
+  CMD="$cmd"
+  trap finish EXIT
   case "$cmd" in
-    enable|quota|create|setup|run|status|fetch|ssh|stop|delete) "cmd_$cmd" "$@" ;;
+    enable|quota|create|setup|run|status|fetch|ssh|stop|delete|spot) "cmd_$cmd" "$@" ;;
     *) usage; [[ -z "$cmd" ]] || exit 2 ;;
   esac
 }

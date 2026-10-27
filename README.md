@@ -15,7 +15,7 @@ Google Cloud の L4 GPU で [ACE-Step 1.5](https://github.com/ACE-Step/ACE-Step-
 | GPU の割り当て (`GPUS_ALL_REGIONS`・Spot L4) | ✅ どちらも 1 で承認済み |
 | VM の作成 | ✅ `makemusic-l4` (us-central1-a)。一度は品切れで失敗したため、b・c も自動で試すように修正済み |
 | ACE-Step のセットアップ (`setup`) | ✅ 完了 (`SETUP_OK`)。GPU は NVIDIA L4 (23,034 MiB)、ACE-Step 1.5.0、torch 2.10 + CUDA 12.8 |
-| 生成 (`run`) | ⬜ 未実施 (ACE-Step で実際に曲を作るのはまだ一度もない) |
+| 生成 (`run`) | ⚠️ 未実施。us-central1-a の Spot VM が起動後 1〜17 分で 3 回回収 (preempted) され、ファイルを送る前に止まった。通常料金への切り替え (`infra/gcp.sh spot off`) を検討中 |
 
 ## 概要
 
@@ -77,7 +77,12 @@ ACE-Step を GPU で実際に動かした実測はまだないので、**すべ�
 
 ### 注意
 
-- **VM の止め忘れがいちばん高くつきます**: 通常料金で丸 1 日動かしっぱなしにすると約 20 ドルです。`run` は生成後に自動停止しますが、`setup` や `fetch` のあとは `infra/gcp.sh stop` で止めてください
+- **VM の止め忘れがいちばん高くつきます** (通常料金で丸 1 日動かすと約 20 ドル)。そのため `infra/gcp.sh` は次のときに **VM を自動で停止** します
+  - `setup`・`run`・`fetch`・`ssh` が失敗したとき (ただし、もともと動いていた VM は生成中かもしれないので `fetch`・`ssh` の失敗では止めない)
+  - `setup` が終わったとき
+  - `fetch`・`ssh` のために VM を起動した場合、そのコマンドが終わったとき
+  - `run` で始めた生成が終わったとき (VM 自身が停止する)
+- 自動停止させたくないときは `KEEP_RUNNING=true infra/gcp.sh setup` のように付けます
 - **使い終わったら `infra/gcp.sh delete`**: 停止中でもディスク代 (月 10 ドル前後) がかかり続けます
 - **予算アラートの設定をおすすめします**: [請求先アカウントの予算とアラート](https://console.cloud.google.com/billing/budgets) で、例えば 20 ドルを超えたらメールが届くようにしておくと安心です
 
@@ -143,11 +148,7 @@ infra/gcp.sh setup
 - 初回は gcloud が SSH 鍵を作り、`Connection refused` が数回出ることがあります。VM の起動待ちなので、そのまま待てば大丈夫です
 - L4 は `nvidia-smi` で約 23,000 MiB と表示されます。ACE-Step の公式ガイドでは「20〜24GB」の区分で、推奨構成は XL + LM 1.7B (このリポジトリの既定値) です
 
-生成をすぐ始めない場合は、ここで VM を止めておきます。
-
-```bash
-infra/gcp.sh stop
-```
+`setup` が終わると VM は自動で停止します。
 
 ### 5. 生成を開始
 
@@ -195,11 +196,7 @@ VM が `TERMINATED` (停止) と表示されたら、生成が終わったか、
 infra/gcp.sh fetch
 ```
 
-`music-source/` に WAV がコピーされます。止まっている VM は自動で起動するので、コピーが終わったら止めてください。
-
-```bash
-infra/gcp.sh stop
-```
+`music-source/` に WAV がコピーされます。止まっている VM は自動で起動し、コピーが終わると自動で停止します。
 
 コピーした WAV は、ゲーム側の `music-source/` に入れて `tools/add-music.sh` を実行すれば、ゲームに組み込まれます。
 
@@ -240,6 +237,7 @@ infra/gcp.sh run --only kr jp --overwrite
 | `ssh` | VM にログイン | VM が動く |
 | `stop` | VM を停止 | ディスク代だけ |
 | `delete` | VM をディスクごと削除 | 止まる |
+| `spot on` / `spot off` | 既存の VM を Spot / 通常料金に切り替える (動いていれば先に停止する) | なし |
 
 ### make_music.py の引数
 
@@ -276,6 +274,7 @@ python make_music.py music_requirements.txt --dry-run
 | `DISK_SIZE_GB` | `100` | ディスク容量 |
 | `IMAGE_FAMILY` | (空) | 空なら CUDA 入りの Deep Learning VM (Ubuntu 22.04) の最新を自動で選ぶ |
 | `AUTO_SHUTDOWN` | `true` | 生成が終わったら VM を停止する |
+| `KEEP_RUNNING` | `false` | `true` にすると、失敗時・`setup` 後などの自動停止をしない |
 
 ### music_requirements.txt の [settings] (全曲共通)
 
@@ -333,11 +332,12 @@ copy_of = scene.opening  # 任意: 生成せず別の曲をコピー (prompt な
 | `quota` で「足りません」 | 表示された割り当ての増加を申請する (「手順 2」を参照) |
 | `VM makemusic-l4 がありません` | まだ作成していないか、別のゾーンにある。`infra/.vm-zone` のゾーンを確認する |
 | 初回の `ssh`・`setup` で SSH 鍵の作成メッセージが出る | 初回だけ gcloud が鍵を作ります。そのまま進めて大丈夫 |
-| `Connection refused` で `run` や `fetch` が止まる | VM の起動直後で SSH がまだ準備できていない。今は自動で最大 5 分待つようにしてあるので、それでも出るときは同じコマンドを再実行する |
+| `Connection refused`・`Operation timed out` で止まる | VM の起動直後で SSH がまだ準備できていないか、Spot で回収された。SSH は自動で最大 5 分待ち、VM が止まったら原因を表示する。失敗したときは VM も自動で止まる |
 | `setup` が「GPU ドライバの準備を待っています」のまま進まない | 10 分待っても進まなければ `infra/gcp.sh ssh` でログインし、`nvidia-smi` を実行して表示を確認する |
 | `setup` の `uv sync` やダウンロードで失敗 | ネットワークの一時的なエラーのことが多い。もう一度 `setup` を実行する |
 | 生成が `vllm` 関係のエラーで止まる | `music_requirements.txt` の `lm_backend = pt` に変えて `run` し直す |
 | `status` で VM が `TERMINATED` なのに曲が足りない | Spot で止められた。`run` をもう一度実行すれば続きから再開する |
+| 「Spot VM が Google に回収されました (preempted)」と出る | そのゾーンの L4 が混み合っていて、Spot VM がすぐ止められている。時間をおいて再実行するか、`infra/gcp.sh spot off` で通常料金 (約 0.85 ドル/時間) に切り替える。`infra/gcp.env` の `SPOT=false` も合わせて変えておく |
 | 特定の曲だけ失敗した | ログの最後に「失敗した상자」が出る。`run --only <상자>` で作り直す |
 | 音のイメージが違う | `prompt` を具体的に書き直すか `seed` を変えて、`run --only <상자> --overwrite` |
 
