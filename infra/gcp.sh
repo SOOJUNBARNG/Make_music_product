@@ -84,7 +84,7 @@ cmd_quota() {
 
 割り当ての増加を申請してください (承認まで数分〜数日):
   https://console.cloud.google.com/iam-admin/quotas?project=$PROJECT
-  上の画面で「GPUS_ALL_REGIONS」と「$l4_metric」(リージョン $REGION) をそれぞれ 1 以上に。
+  上の画面で「GPUS_ALL_REGIONS」と「${l4_metric}」(リージョン ${REGION}) をそれぞれ 1 以上に。
 EOF
     return 1
   fi
