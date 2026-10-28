@@ -3,7 +3,8 @@
 #
 #   infra/gcp.sh enable      Compute Engine API を有効化
 #   infra/gcp.sh quota       L4 GPU の割り当てを確認
-#   infra/gcp.sh create      VM を作成 (空きの無いゾーンは飛ばして次のゾーンを試す)
+#   infra/gcp.sh create      VM を作成して setup まで行い、停止する (空きの無いゾーンは飛ばす)
+#                            --wait [時間]: どこにも空きが無ければ 10 分ごとに再試行 (既定 6 時間)
 #   infra/gcp.sh setup       VM に ACE-Step 1.5 とモデルを入れる (初回のみ・再実行しても安全)
 #   infra/gcp.sh run [引数]  コードと要件ファイルを送って生成開始 (例: run --priority 1)
 #   infra/gcp.sh status      VM の状態と生成ログの末尾を表示
@@ -12,7 +13,7 @@
 #   infra/gcp.sh stop        VM を停止 (ディスク代だけかかる)
 #   infra/gcp.sh delete      VM をディスクごと削除 (課金が完全に止まる)
 #   infra/gcp.sh spot on|off 既存 VM を Spot / 通常料金に切り替える (VM 停止中に実行)
-#   infra/gcp.sh move ZONE   VM を同じリージョンの別ゾーンに作り直して setup する (品切れ対策)
+#   infra/gcp.sh move ZONE   VM を指定ゾーンに作り直して setup する (品切れ対策)
 #
 # 設定は infra/gcp.env。gcloud の既定プロジェクトは変更せず、毎回 --project を付ける。
 # setup・run・fetch・ssh が失敗したとき、setup が終わったときは VM を自動で停止する
@@ -33,6 +34,8 @@ ZONE_FILE="$HERE/.vm-zone"
 ZONE_FROM_ENV=0
 if grep -q '^ZONE=' <<< "$_overrides"; then ZONE_FROM_ENV=1; fi
 if (( ! ZONE_FROM_ENV )) && [[ -s "$ZONE_FILE" ]]; then ZONE="$(cat "$ZONE_FILE")"; fi
+AVAIL_HINT=""
+CREATED_ZONE=""
 
 REGION="${ZONE%-*}"
 REMOTE_DIR="makemusic"           # VM のホーム直下
@@ -153,40 +156,88 @@ pick_image_family() {
   echo "$fam"
 }
 
-cmd_create() {
-  [[ -z "$(vm_status)" ]] || die "VM $VM_NAME はすでにあります (ゾーン: $ZONE, 状態: $(vm_status))"
-  local family; family="$(pick_image_family)"
+# 1 つのゾーンで VM を作る。0: 作成 / 1: 品切れ (AVAIL_HINT に GCP が教えた空きゾーン) / それ以外は終了
+create_in_zone() {
+  local z="$1" family="$2" out
   local spot_args=()
   [[ "$SPOT" == true ]] && spot_args=(--provisioning-model=SPOT --instance-termination-action=STOP)
-  # ZONE を環境変数で指定したときはそのゾーンだけ、それ以外は候補を順に試す
-  local zones="$ZONE" z out
-  (( ZONE_FROM_ENV )) || zones="${ZONE_CANDIDATES:-$ZONE}"
-  for z in $zones; do
-    log "VM を作成: $VM_NAME ($MACHINE_TYPE, $z, spot=$SPOT, image=$family)"
-    if out="$(gc compute instances create "$VM_NAME" \
-        --zone "$z" \
-        --machine-type "$MACHINE_TYPE" \
-        --maintenance-policy TERMINATE \
-        ${spot_args[@]+"${spot_args[@]}"} \
-        --image-family "$family" --image-project "$IMAGE_PROJECT" \
-        --boot-disk-size "${DISK_SIZE_GB}GB" --boot-disk-type pd-balanced \
-        --metadata install-nvidia-driver=True \
-        --scopes cloud-platform 2>&1)"; then
-      # ディスクがイメージより大きいという警告は、Deep Learning VM が起動時に自動で広げるので無視してよい
-      grep -vE "^WARNING: Some requests generated warnings|^ - Disk size: .* is larger than image size|resize the root repartition|add-persistent-disk#resize_pd" <<< "$out" || true
-      echo "$z" > "$ZONE_FILE"
-      echo "作成しました (ゾーン: $z)。以降のコマンドは自動でこのゾーンを使います"
-      [[ "$CMD" == move ]] || echo "ドライバのインストールに数分かかるので、少し待ってから infra/gcp.sh setup を実行してください"
-      return 0
-    fi
-    if grep -qE "ZONE_RESOURCE_POOL_EXHAUSTED|does not have enough resources" <<< "$out"; then
-      echo "→ $z は今 L4 の空きがありません。次のゾーンを試します"
-      continue
-    fi
-    printf '%s\n' "$out" >&2
-    die "VM の作成に失敗しました (ゾーン: $z)"
+  AVAIL_HINT=""
+  log "VM を作成: $VM_NAME ($MACHINE_TYPE, $z, spot=$SPOT)"
+  if out="$(gc compute instances create "$VM_NAME" \
+      --zone "$z" \
+      --machine-type "$MACHINE_TYPE" \
+      --maintenance-policy TERMINATE \
+      ${spot_args[@]+"${spot_args[@]}"} \
+      --image-family "$family" --image-project "$IMAGE_PROJECT" \
+      --boot-disk-size "${DISK_SIZE_GB}GB" --boot-disk-type pd-balanced \
+      --metadata install-nvidia-driver=True \
+      --scopes cloud-platform 2>&1)"; then
+    # ディスクがイメージより大きいという警告は、Deep Learning VM が起動時に自動で広げるので無視してよい
+    grep -vE "^WARNING: Some requests generated warnings|^ - Disk size: .* is larger than image size|resize the root repartition|add-persistent-disk#resize_pd" <<< "$out" || true
+    return 0
+  fi
+  if grep -qE "ZONE_RESOURCE_POOL_EXHAUSTED|STOCKOUT|does not have enough resources" <<< "$out"; then
+    AVAIL_HINT="$(sed -nE 's/^ *zonesAvailable: *//p' <<< "$out" | tr -d "'\"" | tr ',' ' ' | xargs)"
+    echo "→ $z は今 L4 の空きがありません${AVAIL_HINT:+ (GCP によると空きあり: $AVAIL_HINT)}"
+    return 1
+  fi
+  printf '%s\n' "$out" >&2
+  die "VM の作成に失敗しました (ゾーン: $z)"
+}
+
+# 候補ゾーンを順に試す。GCP が空きゾーンを教えてくれたら、それを先に試す
+try_zones() {  # $1=候補 (空白区切り)  成功したら CREATED_ZONE を設定
+  local family="$2" queue tried=" " z h
+  # 改行や連続した空白を 1 つの空白にそろえる
+  queue="$(printf '%s ' $1)"
+  while [[ -n "${queue// /}" ]]; do
+    z="${queue%% *}"; queue="${queue#"$z"}"; queue="${queue# }"
+    [[ "$tried" == *" $z "* ]] && continue
+    tried+="$z "
+    if create_in_zone "$z" "$family"; then CREATED_ZONE="$z"; return 0; fi
+    for h in $AVAIL_HINT; do
+      [[ "$tried" == *" $h "* ]] || queue="$h $queue"
+    done
   done
-  die "どのゾーン ($zones) にも今 L4 の空きがありません。時間をおいて (数十分〜数時間) もう一度 infra/gcp.sh create を実行してください"
+  return 1
+}
+
+cmd_create() {
+  local wait_hours=0
+  while (( $# )); do
+    case "$1" in
+      --wait) wait_hours=6; if [[ "${2:-}" =~ ^[0-9]+$ ]]; then wait_hours="$2"; shift; fi ;;
+      *) die "create の引数が不明です: $1 (使えるのは --wait [時間])" ;;
+    esac
+    shift
+  done
+  # 記録と違うゾーンに VM が残っていないかも確かめる (同時に作れるのは全体で 1 台)
+  local existing
+  existing="$(gc compute instances list --filter="name=$VM_NAME" --format='value(zone.basename())' 2>/dev/null | head -1)"
+  if [[ -n "$existing" ]]; then
+    echo "$existing" > "$ZONE_FILE"
+    die "VM $VM_NAME はすでに $existing にあります。使うなら infra/gcp.sh setup / run、作り直すなら infra/gcp.sh delete のあとに create"
+  fi
+  local family; family="$(pick_image_family)"
+  # ZONE を環境変数で指定したときはそのゾーンだけ、それ以外は候補を順に試す
+  local zones="$ZONE"
+  (( ZONE_FROM_ENV )) || zones="${ZONE_CANDIDATES:-$ZONE}"
+  local deadline=$(( $(date +%s) + wait_hours * 3600 )) round=1
+  CREATED_ZONE=""
+  until try_zones "$zones" "$family"; do
+    if (( wait_hours == 0 )); then
+      die "どのゾーンにも今 L4 の空きがありません。時間をおいて再実行するか、空くまで待つなら infra/gcp.sh create --wait を使ってください"
+    fi
+    (( $(date +%s) + 600 < deadline )) || die "${wait_hours} 時間待ちましたが、どのゾーンにも空きがありませんでした"
+    round=$(( round + 1 ))
+    echo "$(date '+%H:%M') どのゾーンも空きがありません。10 分後にもう一度試します (${round} 回目、Ctrl+C で中止)"
+    sleep 600
+  done
+  ZONE="$CREATED_ZONE"
+  echo "$ZONE" > "$ZONE_FILE"
+  echo "作成しました (ゾーン: $ZONE)。以降のコマンドは自動でこのゾーンを使います"
+  log "続けて setup を実行します (GPU ドライバの準備を待ってから始まります)"
+  cmd_setup
 }
 
 cmd_setup() {
@@ -264,7 +315,6 @@ cmd_delete() {
 cmd_move() {
   local target="${1:-}"
   [[ -n "$target" ]] || die "移動先のゾーンを指定してください (例: infra/gcp.sh move us-central1-c)"
-  [[ "${target%-*}" == "$REGION" ]] || die "GPU の割り当ては $REGION リージョン単位なので、$REGION のゾーンを指定してください"
   [[ "$target" != "$ZONE" ]] || die "VM はすでに $ZONE にあります"
   if [[ -n "$(vm_status)" ]]; then
     echo "VM $VM_NAME を $ZONE で削除して、$target に作り直します。"
@@ -279,8 +329,6 @@ cmd_move() {
   ZONE="$target"
   ZONE_FROM_ENV=1   # 指定したゾーンだけで作る
   cmd_create
-  log "続けて setup を実行します (GPU ドライバの準備を待ってから始まります)"
-  cmd_setup
 }
 
 cmd_spot() {
@@ -313,18 +361,18 @@ recently_preempted() {
 finish() {
   local rc=$?
   trap - EXIT
-  case "$CMD" in setup|move|run|fetch|ssh) ;; *) exit "$rc" ;; esac
+  case "$CMD" in create|setup|move|run|fetch|ssh) ;; *) exit "$rc" ;; esac
   local st reason=""
   st="$(vm_status)"
   if [[ "$st" == RUNNING ]]; then
     if (( rc != 0 )); then
       # fetch・ssh は、もともと動いていた VM (生成中かもしれない) は止めない
-      if [[ "$CMD" == setup || "$CMD" == move ]] || { [[ "$CMD" == run ]] && (( ! GEN_STARTED )); } || (( STARTED_HERE )); then
+      if [[ "$CMD" == create || "$CMD" == setup || "$CMD" == move ]] || { [[ "$CMD" == run ]] && (( ! GEN_STARTED )); } || (( STARTED_HERE )); then
         reason="失敗したので"
       else
         echo "VM は動いたままです (生成中かもしれないため止めていません)。不要なら infra/gcp.sh stop で止めてください"
       fi
-    elif [[ "$CMD" == setup || "$CMD" == move ]]; then
+    elif [[ "$CMD" == create || "$CMD" == setup || "$CMD" == move ]]; then
       reason="セットアップが終わったので"
     elif [[ "$CMD" != run ]] && (( STARTED_HERE )); then
       reason="このコマンドのために起動したので"

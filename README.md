@@ -13,9 +13,9 @@ Google Cloud の L4 GPU で [ACE-Step 1.5](https://github.com/ACE-Step/ACE-Step-
 | コード (生成スクリプト・GCP 操作スクリプト・要件ファイル) | ✅ 実装済み。テストは GPU なしで通過 |
 | Compute Engine API の有効化 | ✅ 完了 |
 | GPU の割り当て (`GPUS_ALL_REGIONS`・Spot L4) | ✅ どちらも 1 で承認済み |
-| VM の作成 | ✅ `makemusic-l4` (us-central1-a)。一度は品切れで失敗したため、b・c も自動で試すように修正済み |
+| VM の作成 | ⏳ いったん作成・setup まで成功したが、us-central1-a で Spot VM の回収と品切れが続いたため削除済み (今は VM もディスクも無く、費用ゼロ)。全世界 44 ゾーンを順に試す `create --wait` で作り直す |
 | ACE-Step のセットアップ (`setup`) | ✅ 完了 (`SETUP_OK`)。GPU は NVIDIA L4 (23,034 MiB)、ACE-Step 1.5.0、torch 2.10 + CUDA 12.8 |
-| 生成 (`run`) | ⚠️ 未実施。us-central1-a の Spot VM が起動後 1〜17 分で 3 回回収 (preempted) され、その後は品切れで起動もできない。通常料金は使わず Spot のまま、空きのあるゾーン (GCP によると us-central1-c) へ `infra/gcp.sh move` で移すか、時間をおいて再試行する方針 |
+| 生成 (`run`) | ⬜ 未実施。us-central1-a の Spot VM は起動後 1〜17 分で 3 回回収 (preempted) され、その後は品切れで起動もできなかった。通常料金は使わず Spot のまま進める方針 |
 
 ## 概要
 
@@ -118,24 +118,31 @@ infra/gcp.sh quota
 
 承認は数分〜数日で、結果はメールで届きます。
 
-### 3. VM を作成 (ここから課金が始まります)
+### 3. VM を作成して ACE-Step を入れる (ここから課金が始まります。約 10 分)
+
+空くまで自動で待つ `--wait` 付きがおすすめです。
 
 ```bash
-infra/gcp.sh create
+infra/gcp.sh create --wait
 ```
 
-- Spot の L4 は、ゾーンによって品切れのことがあります (`ZONE_RESOURCE_POOL_EXHAUSTED`)。`create` は **us-central1-a → b → c の順に自動で試し**、品切れのゾーンは飛ばします
-- 作れたゾーンは `infra/.vm-zone` に記録され、以降のコマンドは自動でそのゾーンを使います
-- 3 ゾーンとも品切れのときは、数十分〜数時間おいてから再実行してください
-- 成功すると「作成しました (ゾーン: …)」と表示されます
+- **ゾーンの探し方**: Spot の L4 はゾーンによって品切れのことがあります (`ZONE_RESOURCE_POOL_EXHAUSTED`)。`create` は、`g2-standard-8` が使える **全世界 44 ゾーンを、おおむね料金の安い順 (米国 → カナダ → 欧州 → アジア) に試し**、品切れのゾーンは飛ばします
+- **GCP が教えてくれた空きゾーン**: 品切れのエラーに「空きのあるゾーン」(`zonesAvailable`) が書かれていれば、そのゾーンを先に試します
+- **`--wait`**: 全ゾーンが品切れなら 10 分ごとにやり直します (既定 6 時間まで。`--wait 12` のように時間を指定できます。Ctrl+C で中止)。`--wait` を付けないと、全部品切れのときはそこで終わります
+- **割り当て**: jpix-it は全リージョンに Spot L4 の割り当てが 1 ずつあるので、どのゾーンでも追加の申請はいりません (全体の上限が 1 なので、同時に作れるのは 1 台)
+- **料金**: 欧州・アジアのゾーンは米国より 1〜3 割ほど高めです
+- **記録**: 作れたゾーンは `infra/.vm-zone` に記録され、以降のコマンドは自動でそのゾーンを使います
+- 作成に成功すると、**続けて自動で setup (下の 4.) を行い、終わったら VM を停止** します
 
-### 4. ACE-Step 1.5 とモデルを VM に入れる (初回のみ、約 10 分)
+### 4. ACE-Step 1.5 とモデルを VM に入れる (`create` が自動で行う。初回のみ、約 10 分)
 
-VM 作成後、GPU ドライバのインストールに数分かかります。`setup` はドライバの準備ができるまで自動で待ってから始まります。
+`create` が続けて実行するので、ふつうは手で実行する必要はありません。途中で失敗したときは、もう一度これを実行します (再実行しても安全)。
 
 ```bash
 infra/gcp.sh setup
 ```
+
+VM 作成直後は GPU ドライバのインストールに数分かかりますが、`setup` は準備ができるまで自動で待ちます。
 
 やること:
 1. GPU を確認します (`nvidia-smi` で L4 と 24GB が表示されます)
@@ -229,7 +236,7 @@ infra/gcp.sh run --only kr jp --overwrite
 |---|---|---|
 | `enable` | Compute Engine API を有効化 | なし |
 | `quota` | L4 GPU の割り当てを確認 | なし |
-| `create` | VM を作成 (品切れのゾーンは飛ばす) | ここから開始 |
+| `create [--wait [時間]]` | VM を作成し、続けて `setup` して停止する (品切れのゾーンは飛ばす。`--wait` で空くまで再試行) | ここから開始 |
 | `setup` | ACE-Step 1.5 とモデルを VM に入れる | VM が動く |
 | `run [引数]` | コードと要件ファイルを送って生成開始。終わると自動停止 | VM が動く |
 | `status` | VM の状態と生成ログの末尾を表示 | なし |
@@ -238,7 +245,7 @@ infra/gcp.sh run --only kr jp --overwrite
 | `stop` | VM を停止 | ディスク代だけ |
 | `delete` | VM をディスクごと削除 | 止まる |
 | `spot on` / `spot off` | 既存の VM を Spot / 通常料金に切り替える (動いていれば先に停止する) | なし |
-| `move ゾーン` | VM を同じリージョンの別ゾーンに作り直し、続けて `setup` して停止する (品切れ対策。確認あり) | VM が動く (約 10 分) |
+| `move ゾーン` | VM を指定したゾーンに作り直し、続けて `setup` して停止する (確認あり) | VM が動く (約 10 分) |
 
 ### make_music.py の引数
 
@@ -268,7 +275,7 @@ python make_music.py music_requirements.txt --dry-run
 |---|---|---|
 | `PROJECT` | `jpix-it` | GCP プロジェクト |
 | `ZONE` | `us-central1-a` | 第一候補のゾーン。環境変数で指定するとそのゾーンだけを試す |
-| `ZONE_CANDIDATES` | `us-central1-a us-central1-b us-central1-c` | `create` が順に試すゾーン。割り当てがリージョン単位なので同じリージョン内で並べる |
+| `ZONE_CANDIDATES` | g2-standard-8 が使える 44 ゾーン (米国 → カナダ → 欧州 → アジア) | `create` が順に試すゾーン。jpix-it は全リージョンに Spot L4 の割り当てがある |
 | `VM_NAME` | `makemusic-l4` | VM の名前 |
 | `MACHINE_TYPE` | `g2-standard-8` | 8 vCPU / 32GB / L4 ×1 |
 | `SPOT` | `true` | `false` で通常料金 (空きは見つかりやすいが数倍高い) |
@@ -329,7 +336,7 @@ copy_of = scene.opening  # 任意: 生成せず別の曲をコピー (prompt な
 
 | 症状 | 原因と対処 |
 |---|---|
-| `create` で `ZONE_RESOURCE_POOL_EXHAUSTED` | そのゾーンで L4 が品切れ。自動で次のゾーンを試します。全部だめなら時間をおいて再実行するか、`SPOT=false` で通常料金にする |
+| `create` で「〜は今 L4 の空きがありません」が続く | そのゾーンで L4 が品切れ。自動で次のゾーンを試します。44 ゾーン全部だめなら `create --wait` で空くまで待つ |
 | `quota` で「足りません」 | 表示された割り当ての増加を申請する (「手順 2」を参照) |
 | `VM makemusic-l4 がありません` | まだ作成していないか、別のゾーンにある。`infra/.vm-zone` のゾーンを確認する |
 | 初回の `ssh`・`setup` で SSH 鍵の作成メッセージが出る | 初回だけ gcloud が鍵を作ります。そのまま進めて大丈夫 |
@@ -338,7 +345,7 @@ copy_of = scene.opening  # 任意: 生成せず別の曲をコピー (prompt な
 | `setup` の `uv sync` やダウンロードで失敗 | ネットワークの一時的なエラーのことが多い。もう一度 `setup` を実行する |
 | 生成が `vllm` 関係のエラーで止まる | `music_requirements.txt` の `lm_backend = pt` に変えて `run` し直す |
 | `status` で VM が `TERMINATED` なのに曲が足りない | Spot で止められた。`run` をもう一度実行すれば続きから再開する |
-| 「〜には今 L4 の空きがありません (VM を起動できませんでした)」と出る | VM のあるゾーンで L4 が品切れ。GCP が空きのあるゾーンを教えてくれた場合は、表示された `infra/gcp.sh move <ゾーン>` で作り直す (ACE-Step とモデルは自動で入れ直す)。教えてくれなかった場合は時間をおいて再実行する |
+| 「〜には今 L4 の空きがありません (VM を起動できませんでした)」と出る | 止めてある VM のゾーンで L4 が品切れ。時間をおいて再実行するか、`infra/gcp.sh delete` のあと `infra/gcp.sh create --wait` で空いているゾーンに作り直す (ACE-Step とモデルは自動で入れ直す。生成済みの曲は先に `fetch` しておく) |
 | 「Spot VM が Google に回収されました (preempted)」と出る | そのゾーンの L4 が混み合っていて、Spot VM がすぐ止められている。時間をおいて再実行するか、`infra/gcp.sh spot off` で通常料金 (約 0.85 ドル/時間) に切り替える。`infra/gcp.env` の `SPOT=false` も合わせて変えておく |
 | 特定の曲だけ失敗した | ログの最後に「失敗した상자」が出る。`run --only <상자>` で作り直す |
 | 音のイメージが違う | `prompt` を具体的に書き直すか `seed` を変えて、`run --only <상자> --overwrite` |
