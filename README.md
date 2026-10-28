@@ -15,7 +15,7 @@ Google Cloud の L4 GPU で [ACE-Step 1.5](https://github.com/ACE-Step/ACE-Step-
 | GPU の割り当て (`GPUS_ALL_REGIONS`・Spot L4) | ✅ どちらも 1 で承認済み |
 | VM の作成 | ✅ `makemusic-l4` (us-central1-a)。一度は品切れで失敗したため、b・c も自動で試すように修正済み |
 | ACE-Step のセットアップ (`setup`) | ✅ 完了 (`SETUP_OK`)。GPU は NVIDIA L4 (23,034 MiB)、ACE-Step 1.5.0、torch 2.10 + CUDA 12.8 |
-| 生成 (`run`) | ⚠️ 未実施。us-central1-a の Spot VM が起動後 1〜17 分で 3 回回収 (preempted) され、ファイルを送る前に止まった。通常料金への切り替え (`infra/gcp.sh spot off`) を検討中 |
+| 生成 (`run`) | ⚠️ 未実施。us-central1-a の Spot VM が起動後 1〜17 分で 3 回回収 (preempted) され、その後は品切れで起動もできない。通常料金は使わず Spot のまま、空きのあるゾーン (GCP によると us-central1-c) へ `infra/gcp.sh move` で移すか、時間をおいて再試行する方針 |
 
 ## 概要
 
@@ -238,6 +238,7 @@ infra/gcp.sh run --only kr jp --overwrite
 | `stop` | VM を停止 | ディスク代だけ |
 | `delete` | VM をディスクごと削除 | 止まる |
 | `spot on` / `spot off` | 既存の VM を Spot / 通常料金に切り替える (動いていれば先に停止する) | なし |
+| `move ゾーン` | VM を同じリージョンの別ゾーンに作り直し、続けて `setup` して停止する (品切れ対策。確認あり) | VM が動く (約 10 分) |
 
 ### make_music.py の引数
 
@@ -337,6 +338,7 @@ copy_of = scene.opening  # 任意: 生成せず別の曲をコピー (prompt な
 | `setup` の `uv sync` やダウンロードで失敗 | ネットワークの一時的なエラーのことが多い。もう一度 `setup` を実行する |
 | 生成が `vllm` 関係のエラーで止まる | `music_requirements.txt` の `lm_backend = pt` に変えて `run` し直す |
 | `status` で VM が `TERMINATED` なのに曲が足りない | Spot で止められた。`run` をもう一度実行すれば続きから再開する |
+| 「〜には今 L4 の空きがありません (VM を起動できませんでした)」と出る | VM のあるゾーンで L4 が品切れ。GCP が空きのあるゾーンを教えてくれた場合は、表示された `infra/gcp.sh move <ゾーン>` で作り直す (ACE-Step とモデルは自動で入れ直す)。教えてくれなかった場合は時間をおいて再実行する |
 | 「Spot VM が Google に回収されました (preempted)」と出る | そのゾーンの L4 が混み合っていて、Spot VM がすぐ止められている。時間をおいて再実行するか、`infra/gcp.sh spot off` で通常料金 (約 0.85 ドル/時間) に切り替える。`infra/gcp.env` の `SPOT=false` も合わせて変えておく |
 | 特定の曲だけ失敗した | ログの最後に「失敗した상자」が出る。`run --only <상자>` で作り直す |
 | 音のイメージが違う | `prompt` を具体的に書き直すか `seed` を変えて、`run --only <상자> --overwrite` |

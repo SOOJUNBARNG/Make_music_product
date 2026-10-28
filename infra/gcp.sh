@@ -12,6 +12,7 @@
 #   infra/gcp.sh stop        VM を停止 (ディスク代だけかかる)
 #   infra/gcp.sh delete      VM をディスクごと削除 (課金が完全に止まる)
 #   infra/gcp.sh spot on|off 既存 VM を Spot / 通常料金に切り替える (VM 停止中に実行)
+#   infra/gcp.sh move ZONE   VM を同じリージョンの別ゾーンに作り直して setup する (品切れ対策)
 #
 # 設定は infra/gcp.env。gcloud の既定プロジェクトは変更せず、毎回 --project を付ける。
 # setup・run・fetch・ssh が失敗したとき、setup が終わったときは VM を自動で停止する
@@ -41,6 +42,7 @@ KEEP_RUNNING="${KEEP_RUNNING:-false}"
 CMD=""             # 実行中のサブコマンド
 STARTED_HERE=0     # このコマンドで VM を起動したか
 GEN_STARTED=0      # run で VM 上の生成を開始できたか
+STOCKOUT=0         # VM を起動しようとしてゾーンの品切れで失敗したか
 
 gc() { gcloud --project "$PROJECT" "$@"; }
 remote() { gc compute ssh "$VM_NAME" --zone "$ZONE" --quiet --command "$1"; }
@@ -68,7 +70,27 @@ ensure_running() {
   [[ -n "$st" ]] || die "VM $VM_NAME がありません。先に infra/gcp.sh create を実行してください"
   if [[ "$st" != "RUNNING" ]]; then
     log "VM を起動します ($st → RUNNING)"
-    gc compute instances start "$VM_NAME" --zone "$ZONE"
+    local out
+    if ! out="$(gc compute instances start "$VM_NAME" --zone "$ZONE" 2>&1)"; then
+      if grep -qE "ZONE_RESOURCE_POOL_EXHAUSTED|STOCKOUT|does not have enough resources" <<< "$out"; then
+        STOCKOUT=1
+        # GCP がエラーの中で「空きのあるゾーン」を教えてくれることがある
+        local avail
+        avail="$(sed -nE 's/^ *zonesAvailable: *//p' <<< "$out" | tr -d "'\"" | tr ',' ' ' | xargs)"
+        echo "→ $ZONE には今 L4 の空きがありません (VM を起動できませんでした)"
+        if [[ -n "$avail" ]]; then
+          echo "  GCP によると、今空きがあるゾーン: $avail"
+          echo "  そのゾーンに VM を作り直すには (setup 込みで約 10 分):"
+          echo "    infra/gcp.sh move ${avail%% *}"
+        else
+          echo "  時間をおいて再実行してください"
+        fi
+        exit 1
+      fi
+      printf '%s\n' "$out" >&2
+      die "VM を起動できませんでした"
+    fi
+    printf '%s\n' "$out"
     STARTED_HERE=1
   fi
   wait_ssh
@@ -154,7 +176,7 @@ cmd_create() {
       grep -vE "^WARNING: Some requests generated warnings|^ - Disk size: .* is larger than image size|resize the root repartition|add-persistent-disk#resize_pd" <<< "$out" || true
       echo "$z" > "$ZONE_FILE"
       echo "作成しました (ゾーン: $z)。以降のコマンドは自動でこのゾーンを使います"
-      echo "ドライバのインストールに数分かかるので、少し待ってから infra/gcp.sh setup を実行してください"
+      [[ "$CMD" == move ]] || echo "ドライバのインストールに数分かかるので、少し待ってから infra/gcp.sh setup を実行してください"
       return 0
     fi
     if grep -qE "ZONE_RESOURCE_POOL_EXHAUSTED|does not have enough resources" <<< "$out"; then
@@ -239,6 +261,28 @@ cmd_delete() {
   rm -f "$ZONE_FILE"
 }
 
+cmd_move() {
+  local target="${1:-}"
+  [[ -n "$target" ]] || die "移動先のゾーンを指定してください (例: infra/gcp.sh move us-central1-c)"
+  [[ "${target%-*}" == "$REGION" ]] || die "GPU の割り当ては $REGION リージョン単位なので、$REGION のゾーンを指定してください"
+  [[ "$target" != "$ZONE" ]] || die "VM はすでに $ZONE にあります"
+  if [[ -n "$(vm_status)" ]]; then
+    echo "VM $VM_NAME を $ZONE で削除して、$target に作り直します。"
+    echo "VM 上の ACE-Step・モデル・生成済みの曲は消えます (ACE-Step とモデルは続けて setup で入れ直します)。"
+    local yn
+    read -r -p "生成済みの曲は fetch してありますか? 続けますか? [y/N] " yn
+    [[ "$yn" == [yY] ]] || { echo 中止しました; return 1; }
+    log "VM を削除 ($ZONE)"
+    gc compute instances delete "$VM_NAME" --zone "$ZONE" --quiet
+    rm -f "$ZONE_FILE"
+  fi
+  ZONE="$target"
+  ZONE_FROM_ENV=1   # 指定したゾーンだけで作る
+  cmd_create
+  log "続けて setup を実行します (GPU ドライバの準備を待ってから始まります)"
+  cmd_setup
+}
+
 cmd_spot() {
   local mode="${1:-}" st
   case "$mode" in
@@ -269,18 +313,18 @@ recently_preempted() {
 finish() {
   local rc=$?
   trap - EXIT
-  case "$CMD" in setup|run|fetch|ssh) ;; *) exit "$rc" ;; esac
+  case "$CMD" in setup|move|run|fetch|ssh) ;; *) exit "$rc" ;; esac
   local st reason=""
   st="$(vm_status)"
   if [[ "$st" == RUNNING ]]; then
     if (( rc != 0 )); then
       # fetch・ssh は、もともと動いていた VM (生成中かもしれない) は止めない
-      if [[ "$CMD" == setup ]] || { [[ "$CMD" == run ]] && (( ! GEN_STARTED )); } || (( STARTED_HERE )); then
+      if [[ "$CMD" == setup || "$CMD" == move ]] || { [[ "$CMD" == run ]] && (( ! GEN_STARTED )); } || (( STARTED_HERE )); then
         reason="失敗したので"
       else
         echo "VM は動いたままです (生成中かもしれないため止めていません)。不要なら infra/gcp.sh stop で止めてください"
       fi
-    elif [[ "$CMD" == setup ]]; then
+    elif [[ "$CMD" == setup || "$CMD" == move ]]; then
       reason="セットアップが終わったので"
     elif [[ "$CMD" != run ]] && (( STARTED_HERE )); then
       reason="このコマンドのために起動したので"
@@ -295,11 +339,12 @@ finish() {
       fi
     fi
   elif (( rc != 0 )) && [[ -n "$st" ]]; then
-    echo "VM は停止しています (状態: $st)。GPU の課金は止まっています"
-    if [[ "$SPOT" == true ]] || recently_preempted; then
-      if recently_preempted; then
-        echo "原因: Spot VM が Google に回収されました (preempted)。このゾーンは今 L4 が混み合っています"
-      fi
+    # 品切れで起動できなかったときは、対策を ensure_running で表示済み
+    if (( STOCKOUT )); then
+      echo "VM は停止しています (状態: $st)。GPU の課金は止まっています"
+    elif recently_preempted; then
+      echo "VM は停止しています (状態: $st)。GPU の課金は止まっています"
+      echo "原因: Spot VM が Google に回収されました (preempted)。このゾーンは今 L4 が混み合っています"
       echo "対策: 時間をおいて再実行するか、通常料金に切り替えます (infra/gcp.sh spot off、約 0.85 ドル/時間)"
     fi
   fi
@@ -313,7 +358,7 @@ main() {
   CMD="$cmd"
   trap finish EXIT
   case "$cmd" in
-    enable|quota|create|setup|run|status|fetch|ssh|stop|delete|spot) "cmd_$cmd" "$@" ;;
+    enable|quota|create|setup|run|status|fetch|ssh|stop|delete|spot|move) "cmd_$cmd" "$@" ;;
     *) usage; [[ -z "$cmd" ]] || exit 2 ;;
   esac
 }
