@@ -15,14 +15,14 @@ Google Cloud の L4 GPU で [ACE-Step 1.5](https://github.com/ACE-Step/ACE-Step-
 | GPU の割り当て (`GPUS_ALL_REGIONS`・Spot L4) | ✅ どちらも 1 で承認済み |
 | VM の作成 | ⏳ いったん作成・setup まで成功したが、us-central1-a で Spot VM の回収と品切れが続いたため削除済み (今は VM もディスクも無く、費用ゼロ)。全世界 44 ゾーンを順に試す `create --wait` で作り直す |
 | ACE-Step のセットアップ (`setup`) | ✅ 完了 (`SETUP_OK`)。GPU は NVIDIA L4 (23,034 MiB)、ACE-Step 1.5.0、torch 2.10 + CUDA 12.8 |
-| 生成 (`run`) | ⬜ 未実施。us-central1-a の Spot VM は起動後 1〜17 分で 3 回回収 (preempted) され、その後は品切れで起動もできなかった。通常料金は使わず Spot のまま進める方針 |
+| 生成 (`run`) | ⬜ 未実施。us-central1-a の Spot VM は起動後 1〜17 分で 3 回回収 (preempted) され、その後は品切れで起動もできなかったため、通常料金に切り替えて進める |
 
 ## 概要
 
 | 項目 | 内容 |
 |---|---|
 | モデル | ACE-Step 1.5 **XL turbo** (DiT 4B, 8 ステップ) + **5Hz LM 1.7B**。MIT ライセンスで商用利用可。1 回の生成で 10 秒〜10 分 |
-| GPU | GCP プロジェクト `jpix-it` の `g2-standard-8` (8 vCPU / 32GB / NVIDIA L4 24GB)。既定は **Spot** |
+| GPU | GCP プロジェクト `jpix-it` の `g2-standard-8` (8 vCPU / 32GB / NVIDIA L4 24GB)。**通常料金** (Spot は回収・品切れが続いたためやめた。`infra/gcp.env` の `SPOT=true` で戻せる) |
 | 出力 | `music-source/<상자>.wav` (48kHz ステレオ・16bit)。ゲームの `tools/add-music.sh` にそのまま渡せる |
 | 仕上げ | 終わり→始まりを 2 秒クロスフェードしてループ再生で途切れないように加工。ピーク -1dBFS に正規化 |
 | 計画と選定理由 | [docs/gpu-plan.md](docs/gpu-plan.md) |
@@ -278,7 +278,7 @@ python make_music.py music_requirements.txt --dry-run
 | `ZONE_CANDIDATES` | g2-standard-8 が使える 44 ゾーン (米国 → カナダ → 欧州 → アジア) | `create` が順に試すゾーン。jpix-it は全リージョンに Spot L4 の割り当てがある |
 | `VM_NAME` | `makemusic-l4` | VM の名前 |
 | `MACHINE_TYPE` | `g2-standard-8` | 8 vCPU / 32GB / L4 ×1 |
-| `SPOT` | `true` | `false` で通常料金 (空きは見つかりやすいが数倍高い) |
+| `SPOT` | `false` | `true` で Spot (安いが、回収されたり品切れになったりしやすい) |
 | `DISK_SIZE_GB` | `100` | ディスク容量 |
 | `IMAGE_FAMILY` | (空) | 空なら CUDA 入りの Deep Learning VM (Ubuntu 22.04) の最新を自動で選ぶ |
 | `AUTO_SHUTDOWN` | `true` | 生成が終わったら VM を停止する |
