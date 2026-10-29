@@ -263,7 +263,8 @@ cmd_run() {
   log "コードと要件ファイルを送ります"
   local tmpdir; tmpdir="$(mktemp -d)"
   local tarball="$tmpdir/makemusic.tgz"
-  tar -czf "$tarball" -C "$ROOT" --exclude '__pycache__' make_music.py music_requirements.txt src
+  # macOS の拡張属性を入れない (VM 側の tar が警告を出すため)
+  COPYFILE_DISABLE=1 tar -czf "$tarball" -C "$ROOT" --no-xattrs --exclude '__pycache__' make_music.py music_requirements.txt src
   gc compute scp "$tarball" "$VM_NAME:makemusic.tgz" --zone "$ZONE" --quiet
   rm -rf "$tmpdir"
 
@@ -277,11 +278,13 @@ cmd_run() {
 set -euo pipefail
 mkdir -p $REMOTE_DIR && tar -xzf makemusic.tgz -C $REMOTE_DIR && rm makemusic.tgz
 cd $REMOTE_DIR
-if pgrep -f 'make_music.py' >/dev/null; then echo 'すでに生成中です'; exit 0; fi
-nohup bash -c '~/$ACESTEP_DIR/.venv/bin/python make_music.py music_requirements.txt --acestep-root ~/$ACESTEP_DIR -v$args; echo "EXIT=\$?"; $shutdown_cmd' >> run.log 2>&1 < /dev/null &
+# 生成中かどうかは PID ファイルで判定する (pgrep -f はこのコマンド自身にも一致してしまう)
+if [ -f run.pid ] && kill -0 "\$(cat run.pid)" 2>/dev/null; then echo 'すでに生成中です'; exit 3; fi
+nohup bash -c '~/$ACESTEP_DIR/.venv/bin/python make_music.py music_requirements.txt --acestep-root ~/$ACESTEP_DIR -v$args; echo "EXIT=\$?"; rm -f run.pid; $shutdown_cmd' >> run.log 2>&1 < /dev/null &
+echo \$! > run.pid
 echo 開始しました
 EOF
-)"
+)" || { local rc=$?; (( rc == 3 )) || exit "$rc"; GEN_STARTED=1; echo "前回の生成が続いています。終わると VM は自動で停止します"; return 0; }
   GEN_STARTED=1
   echo "進み具合: infra/gcp.sh status / 終わったら: infra/gcp.sh fetch"
   [[ "$AUTO_SHUTDOWN" == true ]] && echo "生成が終わると VM は自動で停止します"
