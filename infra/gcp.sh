@@ -335,7 +335,7 @@ cmd_spot() {
   local mode="${1:-}" st
   case "$mode" in
     on)  local sched=(--provisioning-model=SPOT --instance-termination-action=STOP) ;;
-    off) local sched=(--provisioning-model=STANDARD --clear-instance-termination-action) ;;
+    off) local sched=(--no-preemptible --provisioning-model=STANDARD --clear-instance-termination-action) ;;
     *) die "infra/gcp.sh spot on (Spot) または infra/gcp.sh spot off (通常料金) を指定してください" ;;
   esac
   st="$(vm_status)"
