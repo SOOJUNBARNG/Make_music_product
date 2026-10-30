@@ -2,28 +2,30 @@
 
 テキストからゲーム BGM を作るプロジェクトです。
 Google Cloud の L4 GPU で [ACE-Step 1.5](https://github.com/ACE-Step/ACE-Step-1.5) を動かし、
-要件テキストファイル [music_requirements.txt](music_requirements.txt) に書いた **66 曲 (合計約 64 分)** をまとめて生成します。
+要件テキストファイル [music_requirements.txt](music_requirements.txt) に書いた **66 상자ぶんの曲** (生成 63 曲・約 64 分 + 対になる曲のコピー 3 曲) をまとめて生成します。
 
 曲の要件は、ゲーム側の `music-source/README.md`「음악 의뢰서」(2026-10-30、66 상자) に合わせています。
 全曲の方向は「지역의 소리 + 살짝 고양이」(その地域の楽器が主役で、猫らしさは軽い味付け) です。
 
-## 現在の状況 (2026-10-30)
+## 現在の状況 (2026-10-31)
 
-**의뢰서の 66 상자すべての曲が出来ました** (`music-source/` に 66 個の WAV、合計約 67 分)。まだ誰も耳で聞いて確認していません。
+**의뢰서の 66 상자すべての曲が出来ています。** 次は耳で聞いて確認し、ゲームに組み込む段階です (下の「次にやること」)。
 
 | 段階 | 状態 |
 |---|---|
-| コード (生成スクリプト・GCP 操作スクリプト・要件ファイル) | ✅ 実装済み。テストは GPU なしで通過 |
-| Compute Engine API の有効化 | ✅ 完了 |
-| GPU の割り当て | ✅ `GPUS_ALL_REGIONS` = 1 を申請して承認済み。L4 は全リージョンで Spot・通常料金とも 1 |
-| VM の作成 | ✅ `makemusic-l4` を **northamerica-northeast2-a (トロント)** に **通常料金** で作成 (us-central1 は品切れ、16 番目の候補ゾーンで作成できた) |
-| ACE-Step のセットアップ | ✅ 完了。NVIDIA L4 (23,034 MiB)、ACE-Step 1.5.0、torch 2.10 + CUDA 12.8 |
-| 1 曲テスト (`run --only goal`) | ✅ 成功。下の「テスト結果」を参照 |
-| 要件の更新 (66 상자) | ✅ 2026-10-30 の의뢰서に合わせた。`goal` もプロンプトが変わったので作り直す |
-| 全 66 曲の生成 | ✅ 2026-10-30 完了。生成 63 曲 + コピー 3 曲、失敗 0。VM の稼働 約 41 分 |
-| 自動チェック | ✅ 全 63 曲が 48kHz ステレオ・要件どおりの長さ・ピーク -1dBFS (会話シーンは -7dBFS)。ループ曲のつなぎ目の段差は最大 0.043 |
+| 曲の生成 | ✅ 66 상자ぶん完了 (2026-10-30)。生成 63 曲 + コピー 3 曲、失敗 0 |
+| 曲の置き場 | `music-source/` に WAV 66 個 (合計約 67 分、744MB)。Git 管理外 |
+| 自動チェック | ✅ 全曲 48kHz ステレオ・要件どおりの長さ・ピーク -1dBFS (会話シーンは -7dBFS)。ループ曲のつなぎ目の段差は最大 0.043 |
 | 耳での確認 | ⬜ まだ |
 | ゲームへの組み込み (`tools/add-music.sh`) | ⬜ まだ |
+| VM | `makemusic-l4` (northamerica-northeast2-a、通常料金) は **停止中**。GPU の課金は無く、ディスク代 (月 10 ドル前後) だけかかっている |
+
+### 次にやること
+
+1. **聞いて確認する**: 特に地域の曲 12 曲 (`title`・`kr`・`jp`・`cn`・`isle`・`southsea`・`indian`・`eu`・`naf`・`atl`・`nw`・`waf`) が、その地域の楽器らしく聞こえるか、猫らしさが「ひとさじ」に収まっているか
+2. **気に入らない曲を作り直す**: [music_requirements.txt](music_requirements.txt) の `prompt` か `seed` を変えて `infra/gcp.sh run` → `infra/gcp.sh fetch` (変えた曲だけ作り直されます。「曲を作り直すとき」を参照)
+3. **ゲームに組み込む**: `music-source/` の WAV をゲーム側 (`Global_trading_game_product`) の `music-source/` にコピーし、ゲーム側で `tools/add-music.sh` を実行する
+4. **VM を削除する**: もう作り直さないと決めたら `infra/gcp.sh delete` (ディスク代が止まる)
 
 ### 全曲生成の結果 (2026-10-30)
 
@@ -32,25 +34,20 @@ Google Cloud の L4 GPU で [ACE-Step 1.5](https://github.com/ACE-Step/ACE-Step-
 | 生成時間 | 63.8 分ぶんの音楽を **36 分** で生成 (120 秒の曲が約 1 分)。モデル読み込みを含めて 1 回の実行で 39.8 分 |
 | 音量 (RMS) | -29〜-14 dBFS |
 | 出だし (最初の 2 秒) | -40〜-17 dBFS。`goal.0` (ループしない 20 秒のジングル) 以外は、すべて曲全体より静かに始まる |
-| 費用 | VM 約 41 分 + 取り出しの起動数分で、約 0.7〜0.8 ドル (概算) |
-
-
-### テスト結果 (`goal`、2026-10-29)
-
-| 項目 | 結果 |
-|---|---|
-| 出力 | `music-source/goal.wav`: 48kHz ステレオ・16bit、**30.00 秒** |
-| 音量 | ピーク -1.0dBFS、平均 (RMS) -16.7dBFS |
-| 出だし | 最初の 2 秒は -29dBFS で静か (의뢰서「처음 몇 초에 큰 소리가 나지 않게」を満たす) |
-| ループのつなぎ目 | 終わり→始まりの段差 0.0016 (ほぼ 0) で、繰り返し再生しても途切れない |
-| かかった時間 | 1 曲 31 秒 (LM が曲の構成を考える時間がほとんど。DiT の生成自体は 1.5 秒)。モデルの読み込みを含めて 1 回の実行で 4.3 分 |
 | GPU メモリ | 約 15.5GB / 23GB |
+| 費用 | VM 約 41 分 + 取り出しの起動数分で、約 0.7〜0.8 ドル (概算) |
 
 ### これまでの経緯
 
-- us-central1-a の Spot VM は、起動後 1〜17 分で 4 回回収 (preempted) され、その後は品切れで起動もできなかった
-- そのため **通常料金に切り替え**、空いているゾーンを自動で探して作り直した
-- 途中で見つかった問題 (起動直後の SSH 待ち、失敗時に VM が動いたままになる、生成中かどうかの判定ミス、品切れの扱い) は `infra/gcp.sh` で修正済み
+| 日付 | 出来事 |
+|---|---|
+| 10-24〜25 | CPU で MusicGen small を動かす版を作成 (今は [OLD/](OLD/))。8GB の Mac ではメモリ不足で 5 秒の曲に 15 分かかり、MusicGen の重みが非商用ライセンスなこともあって GPU 版へ |
+| 10-27 | ACE-Step 1.5 (MIT ライセンス) + GCP の L4 に決定。Compute Engine API を有効化、`GPUS_ALL_REGIONS` の割り当てを申請・承認 |
+| 10-27〜28 | us-central1-a の Spot VM が起動後 1〜17 分で 4 回回収 (preempted) され、その後は品切れで起動もできず |
+| 10-29 | **通常料金に切り替え**、44 ゾーンを順に試して northamerica-northeast2-a (トロント) に作成。1 曲テスト (`goal`) に成功 |
+| 10-30 | 의뢰서 (66 상자、猫らしさの「공통 꼬리」) に合わせて要件を更新し、全曲を生成 |
+
+途中で見つかった問題 (起動直後の SSH 待ち、失敗時に VM が動いたままになる、生成中かどうかの判定ミス、品切れ・回収の扱い) は `infra/gcp.sh` で修正済みです。
 
 ## 概要
 
@@ -66,7 +63,7 @@ Google Cloud の L4 GPU で [ACE-Step 1.5](https://github.com/ACE-Step/ACE-Step-
 ### しくみ
 
 ```
-手元の Mac                                     GCP (jpix-it, us-central1)
+手元の Mac                                     GCP (jpix-it, northamerica-northeast2-a)
 ─────────────────────────                      ──────────────────────────────────────
 music_requirements.txt ─┐                      VM: makemusic-l4 (g2-standard-8, L4)
 src/ make_music.py ─────┼── infra/gcp.sh run ──▶  ~/makemusic/        ← コードと要件ファイル
@@ -80,7 +77,7 @@ music-source/*.wav ◀────┴── infra/gcp.sh fetch ── ~/makemusi
 
 ## 費用の目安
 
-1 曲テストの実測をもとにした見込みです。料金は変わることがあるので、最新の金額は
+2026-10-30 の全曲生成の実測をもとにしています。料金は変わることがあるので、最新の金額は
 [GCP の料金ページ](https://cloud.google.com/products/compute/pricing/accelerator-optimized) で確認してください。
 
 ### 単価 (GPU 込み)
@@ -92,25 +89,24 @@ music-source/*.wav ◀────┴── infra/gcp.sh fetch ── ~/makemusi
 | ディスク 100GB (pd-balanced) | 約 **10 ドル / 月** (VM を止めていてもかかる。削除すれば止まる) |
 | 生成した WAV のダウンロード | 全 66 曲で約 0.7GB → 0.1 ドル未満 |
 
-### 作業時間 (実測と見込み)
+### 作業時間 (実測)
 
 | 作業 | VM が動く時間 |
 |---|---|
-| `create` + `setup` (初回のみ) | **約 10 分** (実測) |
-| モデルの読み込み (`run` のたびに 1 回) | **約 4 分** (実測) |
-| 生成 | **音楽 1 秒あたり約 1 秒** (実測: 30 秒の曲が 31 秒)。全 66 曲 (約 64 分) で **1 時間強** の見込み |
-| `fetch` | 数分 |
+| `create` + `setup` (初回のみ) | 約 10 分 |
+| モデルの読み込み (`run` のたびに 1 回) | 約 4 分 |
+| 生成 | **音楽 1 分あたり約 35 秒** (120 秒の曲が約 1 分、30 秒の曲が約 30 秒) |
+| 全 66 曲 (`run` 1 回) | 約 40 分 |
+| `fetch` | 数分 (止まっている VM の起動を含む) |
 
 ### 費用の見込み (通常料金)
 
 | ケース | 費用 |
 |---|---|
-| 全 66 曲を 1 回作る (VM 約 1.3 時間) | **約 1〜1.5 ドル** |
-| プロンプトを直して何曲か作り直す (1 回の `run` ごとに 4 分 + 曲の長さ) | 1 回 0.1〜0.5 ドル程度 |
+| 全 66 曲を 1 回作る (VM 約 45 分) | **約 0.7〜0.8 ドル** (実績) |
+| 何曲か作り直す (1 回の `run` ごとに読み込み 4 分 + 曲の長さの約 6 割) | 1 回 0.1〜0.2 ドル程度 |
 | ディスク (1 週間で削除 / 1 か月残す) | 約 2.5 / 10 ドル |
-| **合計の目安** | **約 3〜15 ドル** (ほとんどはディスク代。使い終わったら削除すれば安く済む) |
-
-日本円・韓国ウォンでは、だいたい **数百円〜2,000 円台 (数千〜2 万ウォン台)** の見込みです。
+| **合計の目安** | **数ドル〜十数ドル** (ほとんどはディスク代。使い終わったら削除すれば安く済む) |
 
 ### 注意
 
@@ -157,6 +153,8 @@ infra/gcp.sh quota
 
 ### 3. VM を作成して ACE-Step を入れる (完了済み。ここから課金が始まります。約 10 分)
 
+今の VM を削除したあと、また使うときはここからです。
+
 空くまで自動で待つ `--wait` 付きがおすすめです。
 
 ```bash
@@ -194,9 +192,9 @@ VM 作成直後は GPU ドライバのインストールに数分かかります
 
 `setup` が終わると VM は自動で停止します。
 
-### 5. 生成を開始
+### 5. 生成を開始 (2026-10-30 に全 66 曲を生成済み)
 
-最初は 1 曲だけ作って、ACE-Step が正しく動くか確認するのがおすすめです (`goal` は 30 秒の曲。2026-10-29 に成功済み)。
+新しく VM を作ったときは、最初に 1 曲だけ作って ACE-Step が正しく動くか確認するのがおすすめです (`goal` は 30 秒の曲)。
 
 ```bash
 infra/gcp.sh run --only goal
@@ -233,7 +231,7 @@ VM の状態、生成ログの最後の 20 行、完成した曲数が表示さ�
 [3/12] jp: 完了 jp.wav (120s audio, 48s)
 ```
 
-VM が `TERMINATED` (停止) と表示されたら、生成が終わったか、Spot で止められたかのどちらかです。
+VM が `TERMINATED` (停止) と表示されたら、生成が終わって自動で止まったということです (Spot の場合は、回収されて止まったこともあります)。
 
 ### 7. 生成した曲を手元にコピー
 
@@ -243,7 +241,7 @@ infra/gcp.sh fetch
 
 `music-source/` に WAV がコピーされます。止まっている VM は自動で起動し、コピーが終わると自動で停止します。
 
-コピーした WAV は、ゲーム側の `music-source/` に入れて `tools/add-music.sh` を実行すれば、ゲームに組み込まれます。
+コピーした WAV は、ゲーム側 (`Global_trading_game_product`) の `music-source/` に入れて、ゲーム側で `tools/add-music.sh` を実行すれば、ゲームに組み込まれます。
 
 > **注意**: 旧構成 (MusicGen、非商用ライセンス) で作った `title.wav`・`kr.wav`・`jp.wav` は、2026-10-30 の `fetch` で ACE-Step の曲に上書きされました。今後 MusicGen で作った WAV が混ざらないようにしてください。
 
@@ -259,14 +257,25 @@ ACE-Step のモデルも一緒に消えるので、また使うときは `create
 
 ## 曲を作り直すとき
 
-1. [music_requirements.txt](music_requirements.txt) の該当する상자の `prompt` を書き直します。`seed` を変えるだけでも、同じプロンプトで別の曲になります
-2. その曲だけ作り直します (`--overwrite` で既存のファイルを上書き)
+1. [music_requirements.txt](music_requirements.txt) の該当する상자の `prompt` を書き直すか、`seed = 数字` を足します (`seed` を変えるだけでも、同じプロンプトで別の曲になります)
+2. `run` を実行します。**要件を変えた曲だけが自動で作り直されます** (生成した曲ごとに、使った要件を VM 上の `<상자>.wav.json` に記録していて、それと比べています)
+
+```bash
+infra/gcp.sh run
+```
+
+3. `status` で終わったのを確認してから `fetch` します
+
+```bash
+infra/gcp.sh fetch
+```
+
+- 何が作り直されるかは、手元で確認できます (`*` の付いた曲が作り直しの対象。ただし手元には `.wav.json` が無いので、全曲に `*` が付きます。正確な判定は VM 上の `run` が行います)
+- 要件を変えずに別の曲を試したいときは、`--only` と `--overwrite` を付けます
 
 ```bash
 infra/gcp.sh run --only kr jp --overwrite
 ```
-
-3. `status` で終わったのを確認してから `fetch` します
 
 ## コマンド一覧
 
@@ -391,29 +400,29 @@ ACE-Step のプロンプトは 512 文字までです。「공통 꼬리」は�
 | `setup` が「GPU ドライバの準備を待っています」のまま進まない | 10 分待っても進まなければ `infra/gcp.sh ssh` でログインし、`nvidia-smi` を実行して表示を確認する |
 | `setup` の `uv sync` やダウンロードで失敗 | ネットワークの一時的なエラーのことが多い。もう一度 `setup` を実行する |
 | 生成が `vllm` 関係のエラーで止まる | `music_requirements.txt` の `lm_backend = pt` に変えて `run` し直す |
-| `status` で VM が `TERMINATED` なのに曲が足りない | Spot で止められた。`run` をもう一度実行すれば続きから再開する |
+| `status` で VM が `TERMINATED` なのに曲が足りない | 生成の途中で止まった (Spot の回収など)。`run` をもう一度実行すれば続きから再開する |
 | 「〜には今 L4 の空きがありません (VM を起動できませんでした)」と出る | 止めてある VM のゾーンで L4 が品切れ。時間をおいて再実行するか、`infra/gcp.sh delete` のあと `infra/gcp.sh create --wait` で空いているゾーンに作り直す (ACE-Step とモデルは自動で入れ直す。生成済みの曲は先に `fetch` しておく) |
 | 「Spot VM が Google に回収されました (preempted)」と出る | そのゾーンの L4 が混み合っていて、Spot VM がすぐ止められている。時間をおいて再実行するか、`infra/gcp.sh spot off` で通常料金 (約 0.85 ドル/時間) に切り替える。`infra/gcp.env` の `SPOT=false` も合わせて変えておく |
 | 特定の曲だけ失敗した | ログの最後に「失敗した상자」が出る。`run --only <상자>` で作り直す |
-| 音のイメージが違う | `prompt` を具体的に書き直すか `seed` を変えて、`run --only <상자> --overwrite` |
+| 音のイメージが違う | `prompt` を具体的に書き直すか `seed` を変えて `run` (変えた曲だけ作り直される) |
 
 ## ファイル構成
 
 ```
-infra/gcp.sh             GCP の操作 (enable / quota / create / setup / run / status / fetch / ssh / stop / delete)
+infra/gcp.sh             GCP の操作 (enable / quota / create / setup / run / status / fetch / ssh / stop / delete / spot / move)
 infra/gcp.env            GCP の設定 (プロジェクト・ゾーン・マシン・Spot など)
 infra/.vm-zone           VM を作れたゾーンの記録 (create が書く。Git 管理外)
 make_music.py            VM 上で全曲を生成するエントリポイント
 music_requirements.txt   66 曲ぶんの要件 (음악 의뢰서のプロンプトを使用)
 src/makemusic/
   requirements.py        要件ファイルの読み込みと検証 (長さ・文字数・未知のキー)
-  runner.py              連続生成 (スキップ・再開・コピー・1 曲失敗しても続行・書きかけファイルを残さない)
+  runner.py              連続生成 (要件が変わった曲だけ作り直す・再開・コピー・1 曲失敗しても続行・書きかけファイルを残さない)
   acestep_backend.py     ACE-Step 1.5 の呼び出し (モデルは最初の 1 回だけ読み込む)
   audio.py               ループ用クロスフェード・音量調整・WAV 書き出し
 tests/                   GPU 不要のテスト
 docs/gpu-plan.md         GPU 版の計画と、モデル・GPU の選定理由
 OLD/                     旧構成 (CPU / MusicGen small)
-music-source/            生成した WAV の置き場 (Git 管理外)
+music-source/            生成した WAV の置き場 (Git 管理外。VM 上では各曲の要件の記録 <상자>.wav.json も置く)
 ```
 
 ## 権利について
