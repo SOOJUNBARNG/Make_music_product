@@ -1,7 +1,7 @@
 # GPU 版 計画 (ACE-Step + GCP L4)
 
-> ステータス (2026-10-29): **1 曲 (`goal`) の生成に成功**。VM は northamerica-northeast2-a に通常料金で作成 (us-central1 の Spot は回収・品切れが続いたため断念)。
-> 実測: 30 秒の曲の生成に 31 秒、モデル読み込み約 4 分、GPU メモリ約 15.5GB。最新の状況は [README](../README.md) を参照。
+> ステータス (2026-10-30): **66 상자すべての曲を生成済み** (63 曲生成 + 3 曲コピー、失敗 0、VM 約 41 分)。
+> VM は northamerica-northeast2-a に通常料金で作成 (us-central1 の Spot は回収・品切れが続いたため断念)。最新の状況は [README](../README.md) を参照。
 
 ## 決定事項
 
