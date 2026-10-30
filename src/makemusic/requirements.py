@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import configparser
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 SETTINGS_SECTION = "settings"
@@ -21,6 +21,8 @@ class Settings:
     default_duration: float = 60.0
     loop_crossfade: float = 2.0
     style: str = ""
+    # style_<名前> = ... で名前付きのスタイルを定義し、曲側で style = <名前> と選ぶ (例: 戦闘曲用)
+    styles: dict[str, str] = field(default_factory=dict)
     # ACE-Step のモデル構成 (L4 24GB 向けの既定値)
     dit_model: str = "acestep-v15-xl-turbo"
     lm_model: str = "acestep-5Hz-lm-1.7B"
@@ -42,13 +44,20 @@ class Track:
     bpm: int | None = None
     keyscale: str = ""
     timesignature: str = ""
+    style: str = ""     # 空なら settings.style、名前があれば settings.styles[名前]
+    loop: bool = True   # False ならループ加工 (クロスフェード) をしない (目標達成のジングルなど)
 
-    def caption(self, style: str) -> str:
+    def caption(self, settings: Settings) -> str:
+        style = settings.styles[self.style] if self.style else settings.style
         return f"{self.prompt}, {style}" if style else self.prompt
+
+    def crossfade(self, settings: Settings) -> float:
+        return settings.loop_crossfade if self.loop else 0.0
 
 
 TRACK_KEYS = {
     "prompt", "duration", "priority", "gain_db", "seed", "copy_of", "bpm", "keyscale", "timesignature",
+    "style", "loop",
 }
 
 
@@ -78,6 +87,7 @@ def load_requirements(path: str | Path) -> tuple[Settings, list[Track]]:
             inference_steps=s.getint("inference_steps", d.inference_steps),
             shift=s.getfloat("shift", d.shift),
             thinking=s.getboolean("thinking", d.thinking),
+            styles={k[len("style_"):]: _one_line(v) for k, v in s.items() if k.startswith("style_")},
         )
 
     names = [n for n in parser.sections() if n != SETTINGS_SECTION]
@@ -98,6 +108,8 @@ def load_requirements(path: str | Path) -> tuple[Settings, list[Track]]:
             bpm=sec.getint("bpm", fallback=None),
             keyscale=sec.get("keyscale", ""),
             timesignature=sec.get("timesignature", ""),
+            style=sec.get("style", ""),
+            loop=sec.getboolean("loop", True),
         )
         _validate(track, settings, names)
         tracks.append(track)
@@ -111,13 +123,15 @@ def _validate(track: Track, settings: Settings, names: list[str]) -> None:
         return
     if not track.prompt:
         raise ValueError(f"[{track.name}] に prompt がありません")
-    total = track.duration + settings.loop_crossfade
+    if track.style and track.style not in settings.styles:
+        raise ValueError(f"[{track.name}] style = {track.style} ですが、[settings] に style_{track.style} がありません")
+    total = track.duration + track.crossfade(settings)
     if not MIN_DURATION_SEC <= total <= MAX_DURATION_SEC:
         raise ValueError(
             f"[{track.name}] duration + loop_crossfade ({total:.0f} 秒) は "
             f"{MIN_DURATION_SEC:.0f}〜{MAX_DURATION_SEC:.0f} 秒にしてください"
         )
-    caption = track.caption(settings.style)
+    caption = track.caption(settings)
     if len(caption) > MAX_CAPTION_CHARS:
         raise ValueError(
             f"[{track.name}] prompt + style が {len(caption)} 文字です。{MAX_CAPTION_CHARS} 文字以内にしてください"

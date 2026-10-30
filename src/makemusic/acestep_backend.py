@@ -48,7 +48,7 @@ class AceStepBackend:
 
         s = self.settings
         params = GenerationParams(
-            caption=track.caption(s.style),
+            caption=track.caption(s),
             lyrics="[Instrumental]",
             instrumental=True,
             duration=duration,

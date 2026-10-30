@@ -21,6 +21,7 @@ seed = 100
 default_duration = 20
 loop_crossfade = 1.0
 style = instrumental
+style_battle = playful battle
 
 [title]
 priority = 1
@@ -38,6 +39,18 @@ prompt = calm background
 [scene.openingJp]
 priority = 2
 copy_of = title
+
+[goal]
+priority = 3
+duration = 12
+loop = false
+prompt = jingle
+
+[battle]
+priority = 3
+duration = 12
+style = battle
+prompt = pounce
 """
 
 
@@ -51,8 +64,10 @@ def req(tmp_path):
 def test_load_requirements(req):
     settings, tracks = load_requirements(req)
     assert settings.dit_model == "acestep-v15-xl-turbo"  # 既定値
-    title, scene, copy = tracks
-    assert title.caption(settings.style) == "warm theme, gayageum and koto, instrumental"
+    title, scene, copy, goal, battle = tracks
+    assert title.caption(settings) == "warm theme, gayageum and koto, instrumental"
+    assert battle.caption(settings) == "pounce, playful battle"  # 名前付きスタイル
+    assert (goal.loop, goal.crossfade(settings), title.crossfade(settings)) == (False, 0.0, 1.0)
     assert (title.bpm, title.keyscale) == (90, "D major")
     assert scene.duration == 20 and scene.gain_db == -6
     assert copy.copy_of == "title"
@@ -66,6 +81,7 @@ def test_load_requirements(req):
         ("[a]\nprompt = x\nduraton = 30\n", "未知のキー"),
         ("[a]\ncopy_of = nothing\n", "参照先"),
         (f"[a]\nprompt = {'x' * 600}\n", "512"),
+        ("[a]\nprompt = x\nstyle = nope\n", "style_nope"),
     ],
 )
 def test_invalid_requirements(tmp_path, track, error):
@@ -77,17 +93,22 @@ def test_invalid_requirements(tmp_path, track, error):
 
 def test_bundled_requirements():
     settings, tracks = load_requirements(ROOT / "music_requirements.txt")
-    # music-brief.md (2026-10-27): 第1部 45 + 第2部 11 = 56 상자
-    assert len(tracks) == 56
-    assert sum(t.priority == 1 for t in tracks) == 12  # 第1部 10 + 第2部 2
-    regions = {"title", "kr", "jp", "cn", "isle", "southsea", "indian", "eu", "atl"}
+    # 음악 의뢰서 (2026-10-30): 66 상자、① 꼭 필요한 곡 16
+    assert len(tracks) == 66
+    assert sum(t.priority == 1 for t in tracks) == 16
+    regions = {"title", "kr", "jp", "cn", "isle", "southsea", "indian", "eu", "naf", "atl", "nw", "waf"}
     by_name = {t.name: t for t in tracks}
-    # 「4. 파일 규격」: 기본 음악 1분 30초~3분, 이벤트 음악 30초~1분 (goal は 20〜40 秒)
+    # 길이: 지역 곡 1분 30초~3분, 장면·시련 30초~1분, 목표 20~40초
     assert all(90 <= by_name[n].duration <= 180 for n in regions)
     events = [t for t in tracks if t.name not in regions and not t.copy_of]
     assert all(20 <= t.duration <= 60 for t in events)
     # 会話シーンの曲は台詞を邪魔しないよう全部小さめ
     assert all(t.gain_db < 0 for t in tracks if t.name.startswith("scene") and not t.copy_of)
+    # 戦闘曲は「전투용 꼬리」、それ以外は「공통 꼬리」。goal はループしない短い曲
+    assert {t.name for t in tracks if t.style == "battle"} == {"battle", "battle.boss"}
+    assert "no real cat meow sounds" in by_name["kr"].caption(settings)
+    assert "pouncing" in by_name["battle"].caption(settings)
+    assert all(not t.loop for t in tracks if t.name.startswith("goal"))
     assert [t.name for t in select_tracks(tracks, max_priority=1)][:2] == ["title", "kr"]
 
 
@@ -112,20 +133,37 @@ def test_run_generates_loops_copies_and_resumes(req):
 
     assert run(req, factory) == 0
     out = req.parent / "out"
-    # 生成はクロスフェード 1 秒ぶん長く頼み、仕上がりは指定どおりの長さ
-    assert backend.calls == [("title", 31.0, 100), ("scene", 21.0, 101)]
+    # 生成はクロスフェード 1 秒ぶん長く頼み、仕上がりは指定どおりの長さ。loop = false は長く頼まない
+    assert backend.calls == [("title", 31.0, 100), ("scene", 21.0, 101), ("goal", 12.0, 103), ("battle", 13.0, 104)]
     with wave.open(str(out / "title.wav")) as f:
         assert (f.getnchannels(), f.getnframes()) == (2, 30_000)
     assert (out / "scene.openingJp.wav").read_bytes() == (out / "title.wav").read_bytes()
     assert not list(out.glob("*.part"))
 
+    with wave.open(str(out / "goal.wav")) as f:
+        assert f.getnframes() == 12_000
+
     # 2 回目は全部スキップされ、モデルも読み込まない
     assert run(req, factory) == 0
-    assert len(loads) == 1 and len(backend.calls) == 2
+    assert len(loads) == 1 and len(backend.calls) == 4
 
     # --only + --overwrite は同じシードで作り直す
     assert run(req, factory, only=["scene"], overwrite=True) == 0
     assert backend.calls[-1] == ("scene", 21.0, 101)
+
+
+def test_run_regenerates_when_requirements_change(req):
+    backend = FakeBackend()
+    assert run(req, lambda s: backend) == 0
+    out = req.parent / "out"
+    # 要件の記録が無い古いファイル (例: 以前のプロンプトで作った曲) も作り直す対象
+    (out / "scene.wav.json").unlink()
+    req.write_text(req.read_text(encoding="utf-8").replace("warm theme", "bright theme"), encoding="utf-8")
+    backend.calls.clear()
+    assert run(req, lambda s: backend) == 0
+    # プロンプトを変えた title と記録の無い scene だけ作り直し、title のコピーもやり直す
+    assert [c[0] for c in backend.calls] == ["title", "scene"]
+    assert (out / "scene.openingJp.wav").read_bytes() == (out / "title.wav").read_bytes()
 
 
 def test_run_continues_after_failure(req):

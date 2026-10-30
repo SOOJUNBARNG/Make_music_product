@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import shutil
 import sys
@@ -31,6 +32,36 @@ def track_seed(track: Track, settings: Settings, tracks: list[Track]) -> int | N
     return settings.seed + tracks.index(track)
 
 
+def fingerprint(track: Track, settings: Settings, seed: int | None) -> dict:
+    """出来上がりに影響する要件をまとめたもの。<상자>.wav.json に保存し、変わったら作り直す。"""
+    return {
+        "caption": track.caption(settings),
+        "duration": track.duration,
+        "crossfade": track.crossfade(settings),
+        "gain_db": track.gain_db,
+        "seed": seed,
+        "bpm": track.bpm,
+        "keyscale": track.keyscale,
+        "timesignature": track.timesignature,
+        "dit_model": settings.dit_model,
+        "lm_model": settings.lm_model,
+        "inference_steps": settings.inference_steps,
+        "shift": settings.shift,
+        "thinking": settings.thinking,
+    }
+
+
+def sidecar(path: Path) -> Path:
+    return path.with_name(path.name + ".json")
+
+
+def up_to_date(path: Path, fp: dict) -> bool:
+    try:
+        return path.exists() and json.loads(sidecar(path).read_text(encoding="utf-8")) == fp
+    except (OSError, ValueError):
+        return False
+
+
 def resolve_output_dir(requirements: str | Path, settings: Settings, override: str | None) -> Path:
     # 相対パスの output_dir は要件ファイルの場所を基準にする
     out_dir = Path(override or settings.output_dir)
@@ -49,20 +80,33 @@ def run(
     dry_run: bool = False,
     output_dir: str | None = None,
 ) -> int:
-    """生成済みファイルはスキップするので、Spot VM が止められても再実行で続きから再開できる。"""
+    """要件どおりに出来ている曲はスキップするので、VM が止まっても再実行で続きから再開できる。
+    要件 (プロンプト・長さなど) を変えた曲は、<상자>.wav.json と比べて自動で作り直す。"""
     settings, tracks = load_requirements(requirements)
     out_dir = resolve_output_dir(requirements, settings, output_dir)
     todo = select_tracks(tracks, only, max_priority)
+    fps = {t.name: fingerprint(t, settings, track_seed(t, settings, tracks)) for t in tracks if not t.copy_of}
 
+    def is_done(t: Track) -> bool:
+        path = out_dir / f"{t.name}.wav"
+        if t.copy_of:
+            return path.exists() and up_to_date(out_dir / f"{t.copy_of}.wav", fps[t.copy_of])
+        return up_to_date(path, fps[t.name])
+
+    pending = [t for t in todo if overwrite or not is_done(t)]
     print(f"要件: {requirements}  モデル: {settings.dit_model} + {settings.lm_model}  出力: {out_dir}")
-    print(f"対象 {len(todo)} 曲 / 合計 {sum(t.duration for t in todo if not t.copy_of) / 60:.1f} 分", flush=True)
+    print(
+        f"対象 {len(todo)} 曲 / 合計 {sum(t.duration for t in todo if not t.copy_of) / 60:.1f} 分"
+        f" (うち生成・更新が必要 {len(pending)} 曲)",
+        flush=True,
+    )
     if dry_run:
         for t in todo:
-            what = f"copy of {t.copy_of}" if t.copy_of else f"{t.duration:>5.0f}s  {t.caption(settings.style)}"
-            print(f"  [{t.priority}] {t.name:<20} {what}")
+            mark = "  " if t not in pending else "* "
+            what = f"copy of {t.copy_of}" if t.copy_of else f"{t.duration:>5.0f}s  {t.caption(settings)}"
+            print(f"{mark}[{t.priority}] {t.name:<20} {what}")
+        print("(* = 未生成、または要件が変わったので作り直す曲)")
         return 0
-
-    pending = [t for t in todo if overwrite or not (out_dir / f"{t.name}.wav").exists()]
     if not pending:
         print("すべて生成済みです")
         return 0
@@ -73,32 +117,34 @@ def run(
         path = out_dir / f"{track.name}.wav"
         head = f"[{i}/{len(todo)}] {track.name}"
         if track not in pending:
-            print(f"{head}: 既存のためスキップ", flush=True)
+            print(f"{head}: 生成済みのためスキップ", flush=True)
             continue
         try:
             if track.copy_of:
                 src = out_dir / f"{track.copy_of}.wav"
-                if not src.exists():
-                    raise FileNotFoundError(f"コピー元 {src.name} がまだありません")
+                if not up_to_date(src, fps[track.copy_of]):
+                    raise FileNotFoundError(f"コピー元 {src.name} がまだ (要件どおりに) 出来ていません")
                 shutil.copyfile(src, path)
                 print(f"{head}: {src.name} をコピー", flush=True)
                 continue
+            if path.exists() and not overwrite:
+                print(f"{head}: 要件が変わったので作り直します", flush=True)
 
             if backend is None:
                 # モデルのロードは重いので、実際に生成する曲があるときだけ行う
                 backend = backend_factory(settings)
             print(f"{head}: {track.duration:.0f}s 生成中...", flush=True)
             start = time.perf_counter()
-            # ループ用に切り落とす分だけ長めに作る
-            audio, sr = backend.generate(
-                track, track.duration + settings.loop_crossfade, track_seed(track, settings, tracks)
-            )
-            audio = make_loopable(audio, sr, settings.loop_crossfade)
+            # ループ用に切り落とす分だけ長めに作る (loop = false の曲はそのまま)
+            crossfade = track.crossfade(settings)
+            audio, sr = backend.generate(track, track.duration + crossfade, fps[track.name]["seed"])
+            audio = make_loopable(audio, sr, crossfade)
             audio = normalize(audio, gain_db=track.gain_db)
             # 書き込み途中で止まっても壊れたファイルがスキップされないよう、一時ファイル経由で置く
             tmp = path.with_suffix(".wav.part")
             save_wav(tmp, audio, sr)
             tmp.replace(path)
+            sidecar(path).write_text(json.dumps(fps[track.name], ensure_ascii=False, indent=1), encoding="utf-8")
             print(
                 f"{head}: 完了 {path.name} ({audio.shape[-1] / sr:.0f}s audio, {time.perf_counter() - start:.0f}s)",
                 flush=True,

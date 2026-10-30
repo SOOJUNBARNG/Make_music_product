@@ -1,27 +1,29 @@
 # ============================================================
 # 音楽要件ファイル (ACE-Step 1.5 / GPU 版)
 #
-# 元にした仕様: ゲーム側の docs/music-brief.md (2026-10-27, 第1部 + 第2部 = 56 상자)
-#   - プロンプトは music-brief.md「7. AI 음악 도구용 프롬프트」をそのまま使用
-#   - そこに無い상자は、music-brief.md「3. 상자 목록」の場面説明から作成
-#   - 長さは「4. 파일 규격」: 기본 음악 1분 30초~3분 / 이벤트 음악 30초~1분
+# 元にした仕様: ゲーム側の music-source/README.md「음악 의뢰서」(2026-10-30, 66 상자)
+#   - ①・② のプロンプトは「AI 음악 도구용 프롬프트」をそのまま使用
+#   - 末尾の共通スタイルも「공통 꼬리」「전투용 꼬리」をそのまま使用 (ACE-Step の 512 文字制限に収まる)
+#   - ③ は의뢰서にプロンプトが無いので、場面の説明から作成 (「🐾 모든 곡의 방향」は共通スタイルで付く)
+#   - 長さ: 지역 곡 1분 30초~3분 → 120 秒 / 장면·시련 30초~1분 → 45〜60 秒 / 목표 20~40초 → 20〜30 秒
 #
 # 手元から:   infra/gcp.sh run          (GCP の GPU VM 上で全曲を生成)
 # VM 上で:    python make_music.py music_requirements.txt
 #
 # 上から順に全曲を生成して output_dir に <상자>.wav (48kHz ステレオ) で保存します。
-# すでにファイルがある曲はスキップするので、途中で止まっても再実行で続きから再開できます。
+# 要件どおりに出来ている曲はスキップし、要件 (プロンプト・長さなど) を変えた曲だけ作り直します。
 #
 # 書式 (INI 形式):
 #   [상자 이름]           ← 出力ファイル名になる (例: [trial.storm] → trial.storm.wav)
 #   priority = 1|2|3      ← 1: 꼭 필요한 곡 / 2: 있으면 좋은 곡 / 3: 나머지
 #   duration = 秒数       ← 10〜598 秒 (ACE-Step は 1 回で最大 10 分まで作れる)
 #   prompt   = 英語の説明  ← 曲の説明 (style と合わせて 512 文字以内)
+#   style    = battle     ← (任意) [settings] の style_battle を使う。省略すると style
+#   loop     = false      ← (任意) ループ加工をしない (目標達成のジングルなど)
 #   gain_db  = -6         ← (任意) 音量。会話シーン (scene.*) は台詞を邪魔しないよう小さめに
 #   copy_of  = 別の상자   ← (任意) 生成せず別の曲をコピー
 #   seed     = 整数       ← (任意) 曲ごとの乱数シード
 #   bpm / keyscale / timesignature ← (任意) 指定しなければ ACE-Step が自動で決める
-#                            例: bpm = 70 / keyscale = D major / timesignature = 4
 # 行頭 # はコメント。prompt は次の行をインデントすると複数行で書けます。
 # ============================================================
 
@@ -31,10 +33,15 @@ seed = 1234
 default_duration = 45
 # 終わり→始まりを自然につなげる (ループ用) クロスフェード秒数
 loop_crossfade = 2.0
-# 全プロンプトの末尾に付ける共通スタイル
-# music-brief.md「7.」の共通文 + 「4.」の「처음 몇 초에 큰 소리가 나지 않게」
-style = instrumental, no vocals, seamless loop, game background music,
-    calm enough to listen to for a long time, no war drums, no battle music, soft gentle intro
+# 全プロンプトの末尾に付ける共通スタイル (의뢰서「공통 꼬리」)
+style = instrumental, no vocals, seamless loop, game background music, calm enough to listen to for
+    a long time, subtle playful cat-like touches (light plucked notes like soft paw steps, a
+    tiny bell chime once or twice, a warm low purring drone), no real cat meow sounds, no war
+    drums, no battle music
+# 戦闘曲 (style = battle) 用 (의뢰서「전투용 꼬리」)
+style_battle = instrumental, no vocals, seamless loop, playful game battle music, energetic but
+    friendly and not scary, cat-like pouncing rhythms (sneaky plucked notes then a sudden
+    leap), a tiny bell accent, no real cat meow sounds, no war drums, no brass fanfare
 
 # ACE-Step のモデル構成 (L4 24GB 向け)
 #   dit_model: acestep-v15-xl-turbo (速い・8 ステップ) / acestep-v15-xl-sft (高品質・50 ステップ)
@@ -47,7 +54,7 @@ shift = 3.0
 thinking = true
 
 # ============================================================
-# 第1部 — 꼭 필요한 10곡
+# ① 꼭 필요한 16곡 — 1부「냥해 상회」지역 (7곡)
 # ============================================================
 
 [title]
@@ -55,81 +62,146 @@ priority = 1
 duration = 120
 bpm = 70
 timesignature = 4
-prompt = Gentle East Asian duet of Korean gayageum and Japanese koto with soft low strings,
-    hopeful and tender, two friends meeting across the sea, slow 4/4, around 70 bpm
+prompt = Gentle duet of Korean gayageum and Japanese koto with soft low strings, hopeful and tender,
+    two cat friends meeting across the sea, the two instruments playfully answering each other,
+    slow 4/4 around 70 bpm
 
 [kr]
 priority = 1
 duration = 120
 timesignature = 3
-prompt = Joseon-era Korean folk market music, gayageum and daegeum flute over janggu drum
-    in a lilting 3-beat semachi rhythm, cheerful and friendly, pentatonic
+prompt = Joseon-era Korean folk market around 1610, gayageum and daegeum flute over janggu drum in a
+    lilting 3-beat semachi rhythm, plucked gayageum notes tiptoeing like a cat, cheerful
+    pentatonic
 
 [jp]
 priority = 1
 duration = 120
 timesignature = 4
-prompt = Early Edo-period Japanese port town, koto and shakuhachi with light taiko,
-    clear and calm, miyako-bushi scale, slow to moderate 4/4
+prompt = Early Edo-period Japanese port town, koto and shakuhachi with light taiko, clear and calm,
+    miyako-bushi scale, a small wind chime (furin) once, little koto grace-note leaps, moderate
+    4/4
 
 [cn]
 priority = 1
 duration = 120
 timesignature = 4
-prompt = Late Ming dynasty bustling merchant street with red lanterns, guzheng and erhu
-    with wooden clappers, lively pentatonic melody, moderate 4/4
+prompt = Late Ming dynasty merchant street with red lanterns, guzheng and erhu with wooden clappers,
+    lively pentatonic melody, an occasional short playful erhu slide, moderate 4/4
 
 [isle]
 priority = 1
 duration = 120
-prompt = Sunny sandbar trading port where Chinese and Japanese merchants meet, koto and guzheng together,
-    light percussion, sea breeze, bright and relaxed
+prompt = Sunny sandbar trading port where Chinese and Japanese merchants meet, koto and guzheng
+    together, light percussion, sea breeze, lazy and relaxed like a cat basking in the sun
 
 [southsea]
 priority = 1
 duration = 120
-prompt = Relaxed Southeast Asian tropical harbor around 1610, gamelan-like metallophones and bamboo instruments,
-    stilt houses over calm water, warm and easygoing
+prompt = Relaxed Southeast Asian tropical harbor around 1610, gamelan-like metallophones and bamboo
+    instruments, stilt houses over calm water, bell-like metal tones, unhurried like a nap in
+    the shade
 
 [indian]
 priority = 1
 duration = 120
-prompt = Wide Indian Ocean trading winds, sitar-like and oud-like plucked strings over soft tabla-like hand drums,
-    spice markets and waiting for the monsoon, spacious and warm
+prompt = Wide Indian Ocean trading winds, sitar-like and oud-like plucked strings over soft tabla-
+    like hand drums stepping lightly, spice markets and waiting for the monsoon, warm low
+    drone, spacious
+
+# ============================================================
+# ① 꼭 필요한 16곡 — 2부「남쪽 끝에서 만나요」지역 (5곡)
+# ============================================================
+
+[eu]
+priority = 1
+duration = 120
+timesignature = 3
+prompt = Bustling European harbor market around 1610, Renaissance dance music with lute, recorder
+    and viol, light tambourine, lute pizzicato like soft paw steps, warm and friendly, 3/4 or
+    6/8
+
+[naf]
+priority = 1
+duration = 120
+prompt = North African Mediterranean port and old medina around 1610, oud, qanun and ney flute over
+    a light darbuka groove that tiptoes, white walls and blue doors, warm afternoon, a small
+    hand-jingle once
+
+[atl]
+priority = 1
+duration = 120
+prompt = Bright open Atlantic sea and small island ports under steady trade winds, Iberian guitar-
+    like plucked strings with wooden flute and soft frame drum, airy and hopeful, a cat
+    watching the horizon
+
+[nw]
+priority = 1
+duration = 120
+prompt = Sunny market of New Spain around 1610, wooden flutes and clay ocarina-like whistles, gentle
+    marimba-like wooden percussion and guitar-like strings, cacao and maize stalls, light
+    tapping steps, warm and friendly
+
+[waf]
+priority = 1
+duration = 120
+prompt = West African coastal market town around 1610, kora-like harp and balafon wooden xylophone
+    with talking drum and hand claps, surf in the distance, market-day joy, kora plucks like
+    light paw steps
+
+# ============================================================
+# ① 꼭 필요한 16곡 — 이야기·이벤트 공통 (4곡)
+# ============================================================
 
 [scene]
 priority = 1
 duration = 45
 gain_db = -6
-prompt = Soft story-telling background, quiet strings with gentle gayageum and koto phrases,
-    warm and intimate, very understated so dialogue stays clear
+prompt = Soft story-telling background, quiet strings with gentle gayageum and koto phrases, warm
+    and intimate like a cat dozing on a lap, very understated so dialogue stays clear
 
 [trial]
 priority = 1
 duration = 45
-prompt = Tense sea voyage, low strings and deep taiko, wind and waves, suspenseful East Asian pentatonic,
-    not a battle, moderate tempo
+prompt = Tense sea voyage, low strings and deep taiko, wind and waves, suspenseful pentatonic, short
+    pauses like ears pricked up, not a battle, moderate tempo
 
 [goal]
+# 의뢰서: goal만 반복하지 않는 짧은 곡이어도 돼요 → 끝의 폴짝+방울을 살리도록 루프 가공을 하지 않는다
 priority = 1
 duration = 30
-prompt = Short bright celebration jingle, festive drums and bamboo flute, cheerful East Asian pentatonic,
-    about 30 seconds
+loop = false
+prompt = Short bright celebration jingle, festive drums and bamboo flute, cheerful pentatonic, ends
+    with a playful leap and a tiny bell ring, about 30 seconds, no loop needed
+
+[battle]
+priority = 1
+duration = 60
+style = battle
+prompt = Light-hearted turn-based battle in the countryside, quick plucked strings and hand drums, a
+    cat sneaking up on a toy then pouncing, bright and brave
 
 # ============================================================
-# 第1部 — 있으면 좋은 6곡
+# ② 있으면 좋은 곡
 # ============================================================
+
+[battle.boss]
+priority = 2
+duration = 60
+style = battle
+prompt = Big boss encounter with a great wild animal, deeper drums and strong strings, a small cat's
+    pounding heart facing a big cat, brave and dramatic but never scary or violent
 
 [scene.opening]
 priority = 2
 duration = 60
 gain_db = -6
-prompt = A story begins on a spring morning at a small harbor, gentle gayageum and koto with soft strings,
-    hopeful and fresh
+prompt = A story begins on a spring morning at a small harbor, gentle gayageum and koto with soft
+    strings, hopeful and fresh
 
 [scene.openingJp]
+# 의뢰서: 같은 곡을 두 이름으로 넣어도 돼요
 priority = 2
-# music-brief.md: scene.opening · scene.openingJp は同じプロンプト (同じ曲を 2 つの名前で入れてよい)
 copy_of = scene.opening
 
 [scene.festival]
@@ -143,74 +215,126 @@ prompt = A joyful festival where Korean and Japanese musicians play together, ja
 priority = 2
 duration = 60
 gain_db = -6
-prompt = Emotional finale at the end of the world's sea, sweeping strings with gayageum and koto,
-    two friends keeping a promise at the Cape of Good Hope, wide and moving
+prompt = Emotional finale at the end of the sea, sweeping strings with gayageum and koto, two
+    friends keeping a promise at the Cape of Good Hope, wide and moving, one small bell at the
+    very end
 
 [trial.storm]
 priority = 2
 duration = 45
-prompt = Violent sea storm, rolling taiko and low strings, crashing waves and wind, dramatic but not a battle
+prompt = Violent sea storm, rolling taiko and low strings, crashing waves and wind, dramatic but not
+    a battle
 
 [trial.pirates]
 priority = 2
 duration = 45
-prompt = Suspicious ship approaching at dusk, sparse low strings and muted drums, tense and mysterious, no fighting
+prompt = Suspicious ship approaching at dusk, sparse low strings and muted drums, tense and
+    mysterious, no fighting
 
 [scene.dhowRace]
 priority = 2
 duration = 60
 gain_db = -6
-prompt = Festive dhow sailing race on the Swahili coast, lively East African hand drums and clapping,
-    bright and fun
+prompt = Festive dhow sailing race on the Swahili coast, lively East African hand drums and
+    clapping, bright and fun
+
+[scene.openingMc]
+priority = 2
+duration = 60
+gain_db = -6
+prompt = A story begins in a spring canal city, gentle lute and recorder with soft strings, curious
+    and hopeful
+
+[scene.openingIn]
+# 의뢰서: 같은 곡을 두 이름으로 넣어도 돼요
+priority = 2
+copy_of = scene.openingMc
+
+[scene.meetMc]
+priority = 2
+duration = 60
+gain_db = -6
+prompt = Two young merchants from different seas meet for the first time, warm lute and Iberian
+    guitar duet, friendly and bright
+
+[scene.meetIn]
+# 의뢰서에서 scene.meetMc 와 같은 프롬프트
+priority = 2
+copy_of = scene.meetMc
+
+[scene.tianguis]
+priority = 2
+duration = 60
+gain_db = -6
+prompt = Great open-air market by a lake in New Spain, wooden flutes and marimba-like percussion,
+    bustling and colorful, a moment of wonder when an old crest is found
+
+[scene.goldcoast]
+priority = 2
+duration = 60
+gain_db = -6
+prompt = Market day on a West African beach, talking drums calling the market open, balafon and hand
+    claps, surf and joy
+
+[scene.beninCity]
+priority = 2
+duration = 60
+gain_db = -6
+prompt = Brass casters' street in a royal city, kora and soft percussion with hammer-and-bellows
+    rhythms, admiration for fine craft, warm and dignified
 
 # ============================================================
-# 第1部 — 나머지 상자 (music-brief.md にプロンプトが無いので場面説明から作成)
+# ③ 나머지 상자 (의뢰서에 프롬프트가 없어 장면 설명으로 작성)
 # ============================================================
 
 [scene.voyage]
 priority = 3
 duration = 45
 gain_db = -6
-prompt = End of chapter one, an invitation to sail out to sea together, hopeful gayageum melody
-    with soft strings, gentle anticipation
+prompt = End of chapter one, an invitation to sail out to sea together, hopeful gayageum melody with
+    soft strings, gentle anticipation
 
 [scene.voyageJp]
 priority = 3
 duration = 45
 gain_db = -6
-prompt = End of chapter one, an invitation to sail out to sea together, hopeful koto melody
-    with soft strings, gentle anticipation
+prompt = End of chapter one, an invitation to sail out to sea together, hopeful koto melody with
+    soft strings, gentle anticipation
 
 [scene.tsushima]
 priority = 3
 duration = 45
 gain_db = -6
-prompt = First arrival across the sea at Tsushima island, wonder and relief, koto and daegeum, calm waves
+prompt = First arrival across the sea at Tsushima island, wonder and relief, koto and daegeum, calm
+    waves
 
 [scene.busanJp]
 priority = 3
 duration = 45
 gain_db = -6
-prompt = First arrival across the sea at Busan harbor, wonder and relief, gayageum and shakuhachi, calm waves
+prompt = First arrival across the sea at Busan harbor, wonder and relief, gayageum and shakuhachi,
+    calm waves
 
 [scene.hakata]
 priority = 3
 duration = 45
 gain_db = -6
-prompt = Tama's heartfelt story in the port town of Hakata, gentle koto and gayageum, soft and nostalgic
+prompt = Tama's heartfelt story in the port town of Hakata, gentle koto and gayageum, soft and
+    nostalgic
 
 [scene.hakataJp]
 priority = 3
 duration = 45
 gain_db = -6
-prompt = Tama's heartfelt story in the port town of Hakata, gentle shakuhachi and koto, soft and nostalgic
+prompt = Tama's heartfelt story in the port town of Hakata, gentle shakuhachi and koto, soft and
+    nostalgic
 
 [scene.envoy]
 priority = 3
 duration = 45
 gain_db = -6
-prompt = News of the Joseon goodwill envoy to Japan, dignified and hopeful, daegeum flute and soft strings,
-    stately but calm
+prompt = News of the Joseon goodwill envoy to Japan, dignified and hopeful, daegeum flute and soft
+    strings, stately but calm
 
 [scene.ming]
 priority = 3
@@ -222,87 +346,99 @@ prompt = First steps on Ming dynasty soil, a grand harbor, guzheng and erhu, awe
 priority = 3
 duration = 45
 gain_db = -6
-prompt = End of chapter four, the shimmering sea of silver trade, glittering guzheng arpeggios with soft strings, dreamy
+prompt = End of chapter four, the shimmering sea of silver trade, glittering guzheng arpeggios with
+    soft strings, dreamy
 
 [scene.jeongpa]
 priority = 3
 duration = 45
 gain_db = -6
-prompt = Meeting the righteous martial alliance, noble and calm, guqin and xiao flute, wuxia atmosphere, not combat
+prompt = Meeting the righteous martial alliance, noble and calm, guqin and xiao flute, wuxia
+    atmosphere, not combat
 
 [scene.magyo]
 priority = 3
 duration = 45
 gain_db = -6
-prompt = Meeting a mysterious cat cult, shadowy and enigmatic but playful, low erhu and drones, wuxia, not combat
+prompt = Meeting a mysterious cat cult, shadowy and enigmatic but playful, low erhu and drones,
+    wuxia, not combat
 
 [scene.peaceCall]
 priority = 3
 duration = 45
 gain_db = -6
-prompt = The two rival factions agree to make peace, gentle reconciliation, guzheng and soft strings, hopeful
+prompt = The two rival factions agree to make peace, gentle reconciliation, guzheng and soft
+    strings, hopeful
 
 [scene.peaceTea]
 priority = 3
 duration = 45
 gain_db = -6
-prompt = A peaceful tea gathering at West Lake, serene guqin and xiao flute, water and birds, tranquil
+prompt = A peaceful tea gathering at West Lake, serene guqin and xiao flute, water and birds,
+    tranquil
 
 [scene.southSea]
 priority = 3
 duration = 45
 gain_db = -6
-prompt = Chapter five, arriving in the southern seas, tropical warmth, gamelan bells and bamboo, wonder
+prompt = Chapter five, arriving in the southern seas, tropical warmth, gamelan bells and bamboo,
+    wonder
 
 [scene.monsoon]
 priority = 3
 duration = 45
 gain_db = -6
-prompt = Waiting for the monsoon wind in Malacca, humid and patient, gamelan and soft strings, contemplative
+prompt = Waiting for the monsoon wind in Malacca, humid and patient, gamelan and soft strings,
+    contemplative
 
 [scene.indianOcean]
 priority = 3
 duration = 45
 gain_db = -6
-prompt = Chapter six, arriving across the Indian Ocean, vast horizon, sitar and oud, awe, warm drones
+prompt = Chapter six, arriving across the Indian Ocean, vast horizon, sitar and oud, awe, warm
+    drones
 
 [scene.cloveguild]
 priority = 3
 duration = 45
 gain_db = -6
-prompt = Clove merchant guild on a spice island, proud and aromatic, Moluccan gongs and bamboo flute, calm
+prompt = Clove merchant guild on a spice island, proud and aromatic, Moluccan gongs and bamboo
+    flute, calm
 
 [scene.nutmegguild]
 priority = 3
 duration = 45
 gain_db = -6
-prompt = Nutmeg merchant guild on a spice island, warm and sly, gamelan-like metallophones and bamboo, calm
+prompt = Nutmeg merchant guild on a spice island, warm and sly, gamelan-like metallophones and
+    bamboo, calm
 
 [scene.spiceCall]
 priority = 3
 duration = 45
 gain_db = -6
-prompt = The two spice island guilds are called to make peace, hopeful bamboo flute and soft gongs, gentle
+prompt = The two spice island guilds are called to make peace, hopeful bamboo flute and soft gongs,
+    gentle
 
 [scene.spiceBlend]
 priority = 3
 duration = 45
 gain_db = -6
-prompt = A tea of reconciliation blended with island spices, warm and friendly, gamelan-like bells and soft strings, peaceful
+prompt = A tea of reconciliation blended with island spices, warm and friendly, gamelan-like bells
+    and soft strings, peaceful
 
 [scene.kaskazi]
 priority = 3
 duration = 45
 gain_db = -6
-prompt = The Kaskazi northeast monsoon wind family of the Swahili coast, dry steady wind,
-    East African kalimba and hand drums, proud
+prompt = The Kaskazi northeast monsoon wind family of the Swahili coast, dry steady wind, East
+    African kalimba and hand drums, proud
 
 [scene.kusi]
 priority = 3
 duration = 45
 gain_db = -6
-prompt = The Kusi southeast monsoon wind family of the Swahili coast, cool strong wind,
-    East African kalimba and flute, calm
+prompt = The Kusi southeast monsoon wind family of the Swahili coast, cool strong wind, East African
+    kalimba and flute, calm
 
 [scene.windCall]
 priority = 3
@@ -310,10 +446,60 @@ duration = 45
 gain_db = -6
 prompt = The two wind families reconcile, two winds meet, kalimba and oud together, hopeful and warm
 
+[scene.voyageEu]
+priority = 3
+duration = 45
+gain_db = -6
+prompt = Buying a first ship and setting out to sea from a European harbor, hopeful lute and
+    recorder, soft strings, gentle anticipation
+
+[scene.northSea]
+priority = 3
+duration = 45
+gain_db = -6
+prompt = Amsterdam, a North Sea warehouse city of canals around 1610, steady and industrious, lute
+    and viol with soft recorder, cool grey sea
+
+[scene.atlanticCall]
+priority = 3
+duration = 45
+gain_db = -6
+prompt = Stories of islands far out in the Atlantic, a call to adventure, Iberian guitar and wooden
+    flute, curious and hopeful
+
+[scene.atlanticIsles]
+priority = 3
+duration = 45
+gain_db = -6
+prompt = Learning to sail the trade winds among the Atlantic islands, airy guitar and flute, light
+    frame drum, open and bright
+
+[scene.volta]
+priority = 3
+duration = 45
+gain_db = -6
+prompt = Mid-ocean island harbor, sails drying in the wind, slow guitar and flute, nostalgic and
+    wide, the long way home
+
+[scene.havana]
+priority = 3
+duration = 45
+gain_db = -6
+prompt = First arrival in Havana harbor, warm Caribbean breeze, Spanish guitar and wooden flute over
+    soft hand percussion, sunny and curious
+
+[scene.maghreb]
+priority = 3
+duration = 45
+gain_db = -6
+prompt = First arrival in North Africa, white-walled port and old medina, oud and ney flute with a
+    soft darbuka, wonder and warmth
+
 [trial.fog]
 priority = 3
 duration = 45
-prompt = Thick fog and hidden reefs, eerie and cautious, low drones, distant shakuhachi, sparse percussion, tense
+prompt = Thick fog and hidden reefs, eerie and cautious, low drones, distant shakuhachi, sparse
+    percussion, tense
 
 [trial.fever]
 priority = 3
@@ -323,98 +509,20 @@ prompt = Sailors struck by fever, worried and heavy, slow low strings, faint hea
 [goal.0]
 priority = 3
 duration = 20
-prompt = Small cheerful achievement jingle for the first 1,000 coins, bamboo flute and light drum, happy
+loop = false
+prompt = Small cheerful jingle for reaching the first goal, bamboo flute and light drum, happy, ends
+    with a little leap
 
 [goal.1]
 priority = 3
 duration = 25
-prompt = Bigger celebration for 5,000 coins, gayageum and koto flourish with drums, joyful
+loop = false
+prompt = Bigger celebration for reaching the second goal, plucked strings and flute flourish with
+    drums, joyful, ends with a leap and a bell
 
 [goal.2]
 priority = 3
 duration = 30
-prompt = Grand celebration for 20,000 coins, full ensemble of East Asian instruments, buk and taiko drums,
-    triumphant and joyful
-
-# ============================================================
-# 第2部「남쪽 끝에서 만나요」 — 꼭 필요한 2곡
-# ============================================================
-
-[eu]
-priority = 1
-duration = 120
-timesignature = 3
-prompt = Bustling European harbor market around 1610, Renaissance dance music with lute, recorder and viol,
-    light tambourine, warm and friendly, moderate 3/4 or 6/8
-
-[atl]
-priority = 1
-duration = 120
-prompt = Bright open Atlantic sea and small island ports under steady trade winds,
-    Iberian guitar-like plucked strings with wooden flute and soft frame drum, airy and hopeful
-
-# ============================================================
-# 第2部 — 있으면 좋은 3곡
-# ============================================================
-
-[scene.openingMc]
-priority = 2
-duration = 60
-gain_db = -6
-prompt = A story begins in a spring canal city, gentle lute and recorder with soft strings, curious and hopeful
-
-[scene.openingIn]
-priority = 2
-# music-brief.md: 같은 곡을 두 이름으로 넣어도 돼요
-copy_of = scene.openingMc
-
-[scene.meetMc]
-priority = 2
-duration = 60
-gain_db = -6
-prompt = Two young merchants from different seas meet for the first time, warm lute and Iberian guitar duet,
-    friendly and bright
-
-[scene.meetIn]
-priority = 2
-# music-brief.md では scene.meetMc と同じプロンプト
-copy_of = scene.meetMc
-
-[scene.volta]
-priority = 2
-duration = 60
-gain_db = -6
-prompt = Mid-ocean island harbor, sails drying in the wind, slow guitar and flute, nostalgic and wide,
-    the long way home
-
-# ============================================================
-# 第2部 — 나머지 상자 (music-brief.md にプロンプトが無いので場面説明から作成)
-# ============================================================
-
-[scene.voyageEu]
-priority = 3
-duration = 45
-gain_db = -6
-prompt = Buying a first ship and setting out to sea from a European harbor, hopeful lute and recorder,
-    soft strings, gentle anticipation
-
-[scene.northSea]
-priority = 3
-duration = 45
-gain_db = -6
-prompt = Amsterdam, a North Sea warehouse city of canals around 1610, steady and industrious,
-    lute and viol with soft recorder, cool grey sea
-
-[scene.atlanticCall]
-priority = 3
-duration = 45
-gain_db = -6
-prompt = Stories of islands far out in the Atlantic, a call to adventure, Iberian guitar and wooden flute,
-    curious and hopeful
-
-[scene.atlanticIsles]
-priority = 3
-duration = 45
-gain_db = -6
-prompt = Learning to sail the trade winds among the Atlantic islands, airy guitar and flute,
-    light frame drum, open and bright
+loop = false
+prompt = Grand celebration for reaching the final goal, full ensemble with festive drums, triumphant
+    and joyful, ends with a playful leap and a bell ring
