@@ -1,10 +1,10 @@
 # ============================================================
 # 音楽要件ファイル (ACE-Step 1.5 / GPU 版)
 #
-# 元にした仕様: ゲーム側の music-source/README.md「음악 의뢰서」(2026-10-30, 66 상자)
-#   - ①・② のプロンプトは「AI 음악 도구용 프롬프트」をそのまま使用
+# 元にした仕様: music-brief.md「음악 의뢰서」(2026-11-03, 92 상자 = 2026-10-30 の 66 + 「🆕 아직 빈 상자」26)
+#   - ①・② と 🆕 のプロンプトは의뢰서に書かれたものをそのまま使用 (sam だけ 512 文字に収めるため 2 語省略)
 #   - 末尾の共通スタイルも「공통 꼬리」「전투용 꼬리」をそのまま使用 (ACE-Step の 512 文字制限に収まる)
-#   - ③ は의뢰서にプロンプトが無いので、場面の説明から作成 (「🐾 모든 곡의 방향」は共通スタイルで付く)
+#   - ③ と 🆕 세력·3부 장면は의뢰서にプロンプトが無いので、場面の説明から作成 (「🐾 모든 곡의 방향」は共通スタイルで付く)
 #   - 長さ: 지역 곡 1분 30초~3분 → 120 秒 / 장면·시련 30초~1분 → 45〜60 秒 / 목표 20~40초 → 20〜30 秒
 #
 # 手元から:   infra/gcp.sh run          (GCP の GPU VM 上で全曲を生成)
@@ -526,3 +526,193 @@ duration = 30
 loop = false
 prompt = Grand celebration for reaching the final goal, full ensemble with festive drums, triumphant
     and joyful, ends with a playful leap and a bell ring
+
+# ------------------------------------------------------------
+# ここから下は 2026-11-03 の의뢰서「🆕 아직 빈 상자」(26 개)。
+# 既存の曲のシードは「ファイル内の順番」で決まるので、新しい상자は必ずこの下 (末尾) に足すこと。
+# 途中に挟むと、それより後ろの曲のシードが変わり、全部作り直しになる。
+# ------------------------------------------------------------
+
+# ============================================================
+# 🆕 지역 (2곡) — 그 땅에 있는 동안 계속 흘러요
+# ============================================================
+
+[sam]
+# 의뢰서の원문から 'small' と 'and' を 1 つずつ省いて 512 文字に収めた (意味は同じ)
+priority = 1
+duration = 120
+prompt = South America around 1610, Andean quena flute and siku panpipes with charango-like strings,
+    a hint of coastal guitar and soft maraca rattles, high mountain air, warm Pacific and
+    Atlantic shores, light tiptoeing steps
+
+[satl]
+priority = 1
+duration = 120
+prompt = Lonely wide South Atlantic, long swells and steady wind, soft strings and a wooden flute, a
+    small green island with a fresh spring, quiet hope before reaching the Cape
+
+
+# ============================================================
+# 🆕 클라이맥스·엔딩 장면 (11곡)
+# ============================================================
+
+[scene.meetCape]
+priority = 2
+duration = 60
+gain_db = -6
+prompt = Four cat friends from the eastern and western seas finally meet at the Cape of Good Hope,
+    gayageum, koto, lute and Iberian guitar playing one theme together, sweeping and joyful,
+    one small bell at the very end
+
+[scene.meetCape2]
+# 의뢰서で scene.meetCape と同じプロンプト
+priority = 2
+copy_of = scene.meetCape
+
+[scene.finale]
+priority = 2
+duration = 60
+gain_db = -6
+prompt = Opening a trading house at the home harbor after the long voyage, warm and festive gayageum
+    and koto with soft strings, pride and gratitude
+
+[scene.harmony]
+priority = 2
+duration = 60
+gain_db = -6
+prompt = Epilogue where former rival merchant houses join hands, gentle and generous, instruments of
+    many seas (gayageum, koto, oud, lute, kora) taking turns on one warm melody
+
+[scene.harmony2]
+# 의뢰서で scene.harmony と同じプロンプト
+priority = 2
+copy_of = scene.harmony
+
+[scene.worldOpening]
+priority = 2
+duration = 60
+gain_db = -6
+prompt = A trading house that connects the whole world is born, a grand but friendly overture mixing
+    East Asian and European instruments, the seas connected
+
+[scene.worldPacific]
+priority = 2
+duration = 60
+gain_db = -6
+prompt = Crossing the vast Pacific on a galleon for months, long swells and starry nights, marimba-
+    like wood and koto, awe and patience
+
+[scene.worldEnd]
+priority = 2
+duration = 60
+gain_db = -6
+prompt = Grand finale of the whole story, every regional instrument in one warm theme, the cat motif
+    "sneak-sneak-sneak-pounce" played by each instrument in turn, one bell at the very end
+
+[scene.worldHarmony]
+# 의뢰서で scene.worldEnd と同じプロンプト
+priority = 2
+copy_of = scene.worldEnd
+
+[scene.southAmerica]
+priority = 2
+duration = 60
+gain_db = -6
+prompt = First landfall in South America, quena flute and charango with soft waves, wonder at
+    mountains that touch the sky
+
+[scene.stHelena]
+priority = 2
+duration = 60
+gain_db = -6
+prompt = A tiny green island in the middle of the ocean, a fresh spring and letter stones left by
+    sailors, quiet guitar and wooden flute, tender
+
+
+# ============================================================
+# 🆕 세력·3부 장면 (13곡) — 의뢰서にプロンプトが無いので場面の説明から作成
+# ============================================================
+
+# 의뢰서「짝마다 한 곡을 두 이름으로 넣어도 돼요 (예: 커피집 우드 + 페르시아 산투르 / 류트 + 하프시코드 / 류트 + 비올)」に従い、
+# 張り合う 2 つの세력で 1 曲、和解の 2 場面で 1 曲を作り、もう片方はコピーにしている
+
+[scene.qahwa]
+priority = 3
+duration = 45
+gain_db = -6
+prompt = Two rival information brokers, a coffee house called the Ear of the Wind in Aden and a sand
+    ledger guild in Isfahan, Arabian oud and Persian santur trading curious, clever phrases,
+    warm aroma of coffee
+
+[scene.sandledger]
+# scene.qahwa と対の세력 (同じ曲)
+priority = 3
+copy_of = scene.qahwa
+
+[scene.newsCall]
+priority = 3
+duration = 45
+gain_db = -6
+prompt = The two information brokers agree to share their news, oud and santur playing together for
+    the first time, gentle reconciliation, a newsletter carried by the wind
+
+[scene.newsLetter]
+# scene.newsCall と対の和解の場面 (同じ曲)
+priority = 3
+copy_of = scene.newsCall
+
+[scene.sealedchart]
+priority = 3
+duration = 45
+gain_db = -6
+prompt = Rival map workshops, a sealed sea-chart room in Lisbon and a printing house in Amsterdam,
+    lute and harpsichord trading careful, precise phrases, ink and parchment, quiet
+    concentration
+
+[scene.printhouse]
+# scene.sealedchart と対の세력 (同じ曲)
+priority = 3
+copy_of = scene.sealedchart
+
+[scene.chartCall]
+priority = 3
+duration = 45
+gain_db = -6
+prompt = The two map workshops draw one chart together, lute and harpsichord in a gentle duet, the
+    coastlines of the world joined line by line, hopeful
+
+[scene.sharedChart]
+# scene.chartCall と対の和解の場面 (同じ曲)
+priority = 3
+copy_of = scene.chartCall
+
+[scene.sunstudio]
+priority = 3
+duration = 45
+gain_db = -6
+prompt = Rival painters' studios, a sunlit studio in Florence and a lamplit studio in Antwerp, lute
+    and viol trading graceful phrases, colors of daylight and candlelight, calm and artistic
+
+[scene.lampstudio]
+# scene.sunstudio と対の세력 (同じ曲)
+priority = 3
+copy_of = scene.sunstudio
+
+[scene.brushCall]
+priority = 3
+duration = 45
+gain_db = -6
+prompt = The two studios paint one picture together, a brush of sunlight and a brush of lamplight,
+    lute and viol in a tender duet, warm and admiring
+
+[scene.twoLights]
+# scene.brushCall と対の和解の場面 (同じ曲)
+priority = 3
+copy_of = scene.brushCall
+
+[scene.worldRivals]
+priority = 3
+duration = 45
+gain_db = -6
+prompt = Just after the world trading house opens, a letter arrives from a rival merchant house,
+    curious and slightly tense but friendly, plucked strings and soft drums, a new challenge

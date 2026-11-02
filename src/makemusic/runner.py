@@ -76,6 +76,7 @@ def run(
     *,
     only: list[str] | None = None,
     max_priority: int | None = None,
+    start_at: str | None = None,
     overwrite: bool = False,
     dry_run: bool = False,
     output_dir: str | None = None,
@@ -84,7 +85,7 @@ def run(
     要件 (プロンプト・長さなど) を変えた曲は、<상자>.wav.json と比べて自動で作り直す。"""
     settings, tracks = load_requirements(requirements)
     out_dir = resolve_output_dir(requirements, settings, output_dir)
-    todo = select_tracks(tracks, only, max_priority)
+    todo = select_tracks(tracks, only, max_priority, start_at)
     fps = {t.name: fingerprint(t, settings, track_seed(t, settings, tracks)) for t in tracks if not t.copy_of}
 
     def is_done(t: Track) -> bool:
@@ -166,6 +167,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("requirements", nargs="?", default="music_requirements.txt")
     p.add_argument("--only", nargs="+", metavar="NAME", help="指定した상자だけ生成")
     p.add_argument("--priority", type=int, choices=[1, 2, 3], help="この優先度以下だけ生成 (1 = 必須のみ)")
+    p.add_argument("--start-at", metavar="NAME", help="要件ファイルでこの상자から後ろだけ生成 (末尾に足した新しい상자だけ作るとき)")
     p.add_argument("--overwrite", action="store_true", help="既存ファイルも作り直す")
     p.add_argument("--dry-run", action="store_true", help="生成せず対象一覧だけ表示")
     p.add_argument("-o", "--out-dir", help="要件ファイルの output_dir を上書き")
@@ -193,6 +195,7 @@ def main(argv: list[str] | None = None) -> int:
             factory,
             only=args.only,
             max_priority=args.priority,
+            start_at=args.start_at,
             overwrite=args.overwrite,
             dry_run=args.dry_run,
             output_dir=args.out_dir,

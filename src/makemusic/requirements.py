@@ -139,9 +139,18 @@ def _validate(track: Track, settings: Settings, names: list[str]) -> None:
 
 
 def select_tracks(
-    tracks: list[Track], only: list[str] | None = None, max_priority: int | None = None
+    tracks: list[Track],
+    only: list[str] | None = None,
+    max_priority: int | None = None,
+    start_at: str | None = None,
 ) -> list[Track]:
     selected = tracks
+    if start_at:
+        # 要件ファイルでこの상자より後ろだけ (新しい상자は末尾に足すので「追加分だけ」を選べる)
+        names = [t.name for t in tracks]
+        if start_at not in names:
+            raise ValueError(f"要件ファイルに無い상자です: {start_at}")
+        selected = selected[names.index(start_at):]
     if only:
         unknown = set(only) - {t.name for t in tracks}
         if unknown:

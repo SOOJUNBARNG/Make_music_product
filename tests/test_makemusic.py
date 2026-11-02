@@ -93,10 +93,10 @@ def test_invalid_requirements(tmp_path, track, error):
 
 def test_bundled_requirements():
     settings, tracks = load_requirements(ROOT / "music_requirements.txt")
-    # 음악 의뢰서 (2026-10-30): 66 상자、① 꼭 필요한 곡 16
-    assert len(tracks) == 66
-    assert sum(t.priority == 1 for t in tracks) == 16
-    regions = {"title", "kr", "jp", "cn", "isle", "southsea", "indian", "eu", "naf", "atl", "nw", "waf"}
+    # 음악 의뢰서 (2026-11-03): 92 상자 = 10-30 の 66 + 🆕 26。priority 1 は ① 16 + 🆕 지역 2
+    assert len(tracks) == 92
+    assert sum(t.priority == 1 for t in tracks) == 18
+    regions = {"title", "kr", "jp", "cn", "isle", "southsea", "indian", "eu", "naf", "atl", "nw", "waf", "sam", "satl"}
     by_name = {t.name: t for t in tracks}
     # 길이: 지역 곡 1분 30초~3분, 장면·시련 30초~1분, 목표 20~40초
     assert all(90 <= by_name[n].duration <= 180 for n in regions)
@@ -109,6 +109,9 @@ def test_bundled_requirements():
     assert "no real cat meow sounds" in by_name["kr"].caption(settings)
     assert "pouncing" in by_name["battle"].caption(settings)
     assert all(not t.loop for t in tracks if t.name.startswith("goal"))
+    # 既存曲のシードは並び順で決まるので、10-30 の 66 상자は先頭のまま (新しい상자は末尾に足す)
+    assert [t.name for t in tracks[:2]] == ["title", "kr"] and tracks[65].name == "goal.2"
+    assert tracks[66].name == "sam"
     assert [t.name for t in select_tracks(tracks, max_priority=1)][:2] == ["title", "kr"]
 
 
@@ -164,6 +167,17 @@ def test_run_regenerates_when_requirements_change(req):
     # プロンプトを変えた title と記録の無い scene だけ作り直し、title のコピーもやり直す
     assert [c[0] for c in backend.calls] == ["title", "scene"]
     assert (out / "scene.openingJp.wav").read_bytes() == (out / "title.wav").read_bytes()
+
+
+def test_start_at_selects_only_appended_boxes(req):
+    backend = FakeBackend()
+    assert run(req, lambda s: backend, start_at="goal") == 0
+    # goal から後ろ (goal・battle) だけ。前の title・scene やそのコピーは作らない
+    assert [c[0] for c in backend.calls] == ["goal", "battle"]
+    out = req.parent / "out"
+    assert not (out / "title.wav").exists() and not (out / "scene.openingJp.wav").exists()
+    with pytest.raises(ValueError, match="nope"):
+        run(req, lambda s: backend, start_at="nope")
 
 
 def test_run_continues_after_failure(req):
