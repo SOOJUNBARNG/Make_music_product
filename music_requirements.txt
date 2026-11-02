@@ -105,8 +105,7 @@ prompt = Relaxed Southeast Asian tropical harbor around 1610, gamelan-like metal
 [indian]
 priority = 1
 duration = 120
-prompt = Wide Indian Ocean trading winds, sitar-like and oud-like plucked strings over soft tabla-
-    like hand drums stepping lightly, spice markets and waiting for the monsoon, warm low
+prompt = Wide Indian Ocean trading winds, sitar-like and oud-like plucked strings over soft tabla-like hand drums stepping lightly, spice markets and waiting for the monsoon, warm low
     drone, spacious
 
 # ============================================================
@@ -131,8 +130,7 @@ prompt = North African Mediterranean port and old medina around 1610, oud, qanun
 [atl]
 priority = 1
 duration = 120
-prompt = Bright open Atlantic sea and small island ports under steady trade winds, Iberian guitar-
-    like plucked strings with wooden flute and soft frame drum, airy and hopeful, a cat
+prompt = Bright open Atlantic sea and small island ports under steady trade winds, Iberian guitar-like plucked strings with wooden flute and soft frame drum, airy and hopeful, a cat
     watching the horizon
 
 [nw]
@@ -599,8 +597,7 @@ prompt = A trading house that connects the whole world is born, a grand but frie
 priority = 2
 duration = 60
 gain_db = -6
-prompt = Crossing the vast Pacific on a galleon for months, long swells and starry nights, marimba-
-    like wood and koto, awe and patience
+prompt = Crossing the vast Pacific on a galleon for months, long swells and starry nights, marimba-like wood and koto, awe and patience
 
 [scene.worldEnd]
 priority = 2

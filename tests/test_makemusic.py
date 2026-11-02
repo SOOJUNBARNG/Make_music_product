@@ -112,6 +112,8 @@ def test_bundled_requirements():
     # 既存曲のシードは並び順で決まるので、10-30 の 66 상자は先頭のまま (新しい상자は末尾に足す)
     assert [t.name for t in tracks[:2]] == ["title", "kr"] and tracks[65].name == "goal.2"
     assert tracks[66].name == "sam"
+    # 複数行の prompt を書くとき、ハイフンの位置で改行すると "marimba- like" のように空白が入ってしまう
+    assert not [t.name for t in tracks if "- " in t.prompt]
     assert [t.name for t in select_tracks(tracks, max_priority=1)][:2] == ["title", "kr"]
 
 
