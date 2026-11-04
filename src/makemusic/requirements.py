@@ -3,15 +3,22 @@
 from __future__ import annotations
 
 import configparser
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 SETTINGS_SECTION = "settings"
 
 # ACE-Step 1.5 が受け付ける範囲
 MIN_DURATION_SEC = 10.0
 MAX_DURATION_SEC = 600.0
+# ACE-Step の説明では caption は 512 文字未満。コード上は制限が無いので、超えたら警告にとどめ、
+# 明らかに長すぎるものだけエラーにする
 MAX_CAPTION_CHARS = 512
+HARD_MAX_CAPTION_CHARS = 1024
+NO_STYLE = "none"  # style = none: prompt に共通スタイルを付けず、そのまま使う
 
 
 @dataclass
@@ -44,10 +51,12 @@ class Track:
     bpm: int | None = None
     keyscale: str = ""
     timesignature: str = ""
-    style: str = ""     # 空なら settings.style、名前があれば settings.styles[名前]
+    style: str = ""     # 空なら settings.style、名前があれば settings.styles[名前]、none なら付けない
     loop: bool = True   # False ならループ加工 (クロスフェード) をしない (目標達成のジングルなど)
 
     def caption(self, settings: Settings) -> str:
+        if self.style == NO_STYLE:
+            return self.prompt
         style = settings.styles[self.style] if self.style else settings.style
         return f"{self.prompt}, {style}" if style else self.prompt
 
@@ -123,7 +132,7 @@ def _validate(track: Track, settings: Settings, names: list[str]) -> None:
         return
     if not track.prompt:
         raise ValueError(f"[{track.name}] に prompt がありません")
-    if track.style and track.style not in settings.styles:
+    if track.style and track.style != NO_STYLE and track.style not in settings.styles:
         raise ValueError(f"[{track.name}] style = {track.style} ですが、[settings] に style_{track.style} がありません")
     total = track.duration + track.crossfade(settings)
     if not MIN_DURATION_SEC <= total <= MAX_DURATION_SEC:
@@ -132,9 +141,14 @@ def _validate(track: Track, settings: Settings, names: list[str]) -> None:
             f"{MIN_DURATION_SEC:.0f}〜{MAX_DURATION_SEC:.0f} 秒にしてください"
         )
     caption = track.caption(settings)
-    if len(caption) > MAX_CAPTION_CHARS:
+    if len(caption) > HARD_MAX_CAPTION_CHARS:
         raise ValueError(
-            f"[{track.name}] prompt + style が {len(caption)} 文字です。{MAX_CAPTION_CHARS} 文字以内にしてください"
+            f"[{track.name}] prompt + style が {len(caption)} 文字です。{HARD_MAX_CAPTION_CHARS} 文字以内にしてください"
+        )
+    if len(caption) > MAX_CAPTION_CHARS:
+        logger.warning(
+            "[%s] prompt + style が %d 文字で、ACE-Step の目安 (%d 文字未満) を超えています",
+            track.name, len(caption), MAX_CAPTION_CHARS,
         )
 
 

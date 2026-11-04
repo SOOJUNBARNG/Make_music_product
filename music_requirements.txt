@@ -18,7 +18,7 @@
 #   priority = 1|2|3      ← 1: 꼭 필요한 곡 / 2: 있으면 좋은 곡 / 3: 나머지
 #   duration = 秒数       ← 10〜598 秒 (ACE-Step は 1 回で最大 10 分まで作れる)
 #   prompt   = 英語の説明  ← 曲の説明 (style と合わせて 512 文字以内)
-#   style    = battle     ← (任意) [settings] の style_battle を使う。省略すると style
+#   style    = battle     ← (任意) [settings] の style_battle を使う。省略すると style、none なら何も付けない
 #   loop     = false      ← (任意) ループ加工をしない (目標達成のジングルなど)
 #   gain_db  = -6         ← (任意) 音量。会話シーン (scene.*) は台詞を邪魔しないよう小さめに
 #   copy_of  = 別の상자   ← (任意) 生成せず別の曲をコピー
@@ -526,44 +526,57 @@ prompt = Grand celebration for reaching the final goal, full ensemble with festi
     and joyful, ends with a playful leap and a bell ring
 
 # ------------------------------------------------------------
-# ここから下は 2026-11-03 の의뢰서「🆕 아직 빈 상자」(26 개)。
+# ここから下は required_music.md (2026-11-04) の 26 상자。
+# required_music.md のプロンプトは「공통 꼬리」まで付いた完成形なので、style = none でそのまま使う。
 # 既存の曲のシードは「ファイル内の順番」で決まるので、新しい상자は必ずこの下 (末尾) に足すこと。
 # 途中に挟むと、それより後ろの曲のシードが変わり、全部作り直しになる。
 # ------------------------------------------------------------
 
 # ============================================================
-# 🆕 지역 (2곡) — 그 땅에 있는 동안 계속 흘러요
+# A. 지역 (2곡)
 # ============================================================
 
 [sam]
-# 의뢰서の원문から 'small' と 'and' を 1 つずつ省いて 512 文字に収めた (意味は同じ)
 priority = 1
 duration = 120
-prompt = South America around 1610, Andean quena flute and siku panpipes with charango-like strings,
-    a hint of coastal guitar and soft maraca rattles, high mountain air, warm Pacific and
-    Atlantic shores, light tiptoeing steps
+style = none
+prompt = South America around 1610, Andean quena flute and siku panpipes with small charango-like
+    strings, a hint of coastal guitar and soft maraca rattles, high mountain air and warm
+    Pacific and Atlantic shores, light tiptoeing steps, moderate tempo, instrumental, no
+    vocals, seamless loop, game background music, calm enough to listen to for a long time,
+    subtle playful cat-like touches (light plucked notes like soft paw steps, a tiny bell chime
+    once or twice, a warm low purring drone), no real cat meow sounds, no war drums, no battle
+    music
 
 [satl]
 priority = 1
 duration = 120
+style = none
 prompt = Lonely wide South Atlantic, long swells and steady wind, soft strings and a wooden flute, a
-    small green island with a fresh spring, quiet hope before reaching the Cape
+    small green island with a fresh spring, quiet hope before reaching the Cape, slow and
+    spacious, instrumental, no vocals, seamless loop, game background music, calm enough to
+    listen to for a long time, subtle playful cat-like touches (light plucked notes like soft
+    paw steps, a tiny bell chime once or twice, a warm low purring drone), no real cat meow
+    sounds, no war drums, no battle music
 
 
 # ============================================================
-# 🆕 클라이맥스·엔딩 장면 (11곡)
+# B. 클라이맥스·엔딩 장면 (11곡)
 # ============================================================
 
 [scene.meetCape]
 priority = 2
 duration = 60
 gain_db = -6
+style = none
 prompt = Four cat friends from the eastern and western seas finally meet at the Cape of Good Hope,
     gayageum, koto, lute and Iberian guitar playing one theme together, sweeping and joyful,
-    one small bell at the very end
+    one small bell at the very end, instrumental, no vocals, seamless loop, game background
+    music, subtle playful cat-like touches (light plucked notes like soft paw steps, a warm low
+    purring drone), no real cat meow sounds, no war drums, no battle music
 
 [scene.meetCape2]
-# 의뢰서で scene.meetCape と同じプロンプト
+# required_music.md「한 곡을 두 이름으로」
 priority = 2
 copy_of = scene.meetCape
 
@@ -571,18 +584,26 @@ copy_of = scene.meetCape
 priority = 2
 duration = 60
 gain_db = -6
+style = none
 prompt = Opening a trading house at the home harbor after the long voyage, warm and festive gayageum
-    and koto with soft strings, pride and gratitude
+    and koto with soft strings, pride and gratitude, a gentle celebration with friends,
+    instrumental, no vocals, seamless loop, game background music, subtle playful cat-like
+    touches (light plucked notes like soft paw steps, a tiny bell chime once or twice, a warm
+    low purring drone), no real cat meow sounds, no war drums, no battle music
 
 [scene.harmony]
 priority = 2
 duration = 60
 gain_db = -6
+style = none
 prompt = Epilogue where former rival merchant houses join hands, gentle and generous, instruments of
-    many seas (gayageum, koto, oud, lute, kora) taking turns on one warm melody
+    many seas (gayageum, koto, oud, lute, kora) taking turns on one warm melody, peaceful and
+    thankful, instrumental, no vocals, seamless loop, game background music, subtle playful
+    cat-like touches (light plucked notes like soft paw steps, a tiny bell chime once or twice,
+    a warm low purring drone), no real cat meow sounds, no war drums, no battle music
 
 [scene.harmony2]
-# 의뢰서で scene.harmony と同じプロンプト
+# required_music.md「한 곡을 두 이름으로」
 priority = 2
 copy_of = scene.harmony
 
@@ -590,24 +611,40 @@ copy_of = scene.harmony
 priority = 2
 duration = 60
 gain_db = -6
+style = none
 prompt = A trading house that connects the whole world is born, a grand but friendly overture mixing
-    East Asian and European instruments, the seas connected
+    East Asian and European instruments (gayageum, koto, lute, recorder, soft strings), the
+    seas connected, bright and hopeful, instrumental, no vocals, seamless loop, game background
+    music, subtle playful cat-like touches (light plucked notes like soft paw steps, a tiny
+    bell chime once or twice, a warm low purring drone), no real cat meow sounds, no war drums,
+    no brass fanfare, no battle music
 
 [scene.worldPacific]
 priority = 2
 duration = 60
 gain_db = -6
-prompt = Crossing the vast Pacific on a galleon for months, long swells and starry nights, marimba-like wood and koto, awe and patience
+style = none
+prompt = Crossing the vast Pacific on a galleon for months, long swells and starry nights,
+    marimba-like wood and koto with soft strings, awe and patience, slow and wide,
+    instrumental, no vocals, seamless loop, game background music, calm enough to listen to for
+    a long time, subtle playful cat-like touches (light plucked notes like soft paw steps, a
+    tiny bell chime once or twice, a warm low purring drone), no real cat meow sounds, no war
+    drums, no battle music
 
 [scene.worldEnd]
 priority = 2
 duration = 60
 gain_db = -6
-prompt = Grand finale of the whole story, every regional instrument in one warm theme, the cat motif
-    "sneak-sneak-sneak-pounce" played by each instrument in turn, one bell at the very end
+style = none
+prompt = Grand finale of the whole story, every regional instrument (gayageum, koto, guzheng,
+    gamelan, sitar, oud, lute, kora, marimba) in one warm theme, a four-note cat motif
+    "sneak-sneak-sneak-pounce" played by each instrument in turn, moving and joyful, one bell
+    at the very end, instrumental, no vocals, seamless loop, game background music, subtle
+    playful cat-like touches (light plucked notes like soft paw steps, a warm low purring
+    drone), no real cat meow sounds, no war drums, no battle music
 
 [scene.worldHarmony]
-# 의뢰서で scene.worldEnd と同じプロンプト
+# required_music.md「한 곡을 두 이름으로」
 priority = 2
 copy_of = scene.worldEnd
 
@@ -615,46 +652,65 @@ copy_of = scene.worldEnd
 priority = 2
 duration = 60
 gain_db = -6
+style = none
 prompt = First landfall in South America, quena flute and charango with soft waves, wonder at
-    mountains that touch the sky
+    mountains that touch the sky, fresh and curious, instrumental, no vocals, seamless loop,
+    game background music, subtle playful cat-like touches (light plucked notes like soft paw
+    steps, a tiny bell chime once or twice, a warm low purring drone), no real cat meow sounds,
+    no war drums, no battle music
 
 [scene.stHelena]
 priority = 2
 duration = 60
 gain_db = -6
+style = none
 prompt = A tiny green island in the middle of the ocean, a fresh spring and letter stones left by
-    sailors, quiet guitar and wooden flute, tender
+    sailors, quiet guitar and wooden flute, tender and hopeful, instrumental, no vocals,
+    seamless loop, game background music, calm enough to listen to for a long time, subtle
+    playful cat-like touches (light plucked notes like soft paw steps, a tiny bell chime once
+    or twice, a warm low purring drone), no real cat meow sounds, no war drums, no battle music
 
 
 # ============================================================
-# 🆕 세력·3부 장면 (13곡) — 의뢰서にプロンプトが無いので場面の説明から作成
+# C. 세력·3부 장면 (13곡)
 # ============================================================
-
-# 의뢰서「짝마다 한 곡을 두 이름으로 넣어도 돼요 (예: 커피집 우드 + 페르시아 산투르 / 류트 + 하프시코드 / 류트 + 비올)」に従い、
-# 張り合う 2 つの세력で 1 曲、和解の 2 場面で 1 曲を作り、もう片方はコピーにしている
 
 [scene.qahwa]
 priority = 3
 duration = 45
 gain_db = -6
-prompt = Two rival information brokers, a coffee house called the Ear of the Wind in Aden and a sand
-    ledger guild in Isfahan, Arabian oud and Persian santur trading curious, clever phrases,
-    warm aroma of coffee
+style = none
+prompt = A cozy coffee house in an Arabian port where news travels with the wind, oud and ney flute
+    over a soft riq tambourine, the smell of roasted coffee, curious whispers and friendly
+    chatter, warm afternoon, instrumental, no vocals, seamless loop, game background music,
+    subtle playful cat-like touches (light plucked notes like soft paw steps, a tiny bell chime
+    once or twice, a warm low purring drone), no real cat meow sounds, no war drums, no battle
+    music
 
 [scene.sandledger]
-# scene.qahwa と対の세력 (同じ曲)
 priority = 3
-copy_of = scene.qahwa
+duration = 45
+gain_db = -6
+style = none
+prompt = A quiet Persian merchants' hall keeping careful ledgers, santur and kamancheh with a soft
+    daf frame drum, patient and thoughtful, tiled courtyard and a small fountain, instrumental,
+    no vocals, seamless loop, game background music, subtle playful cat-like touches (light
+    plucked notes like soft paw steps, a tiny bell chime once or twice, a warm low purring
+    drone), no real cat meow sounds, no war drums, no battle music
 
 [scene.newsCall]
 priority = 3
 duration = 45
 gain_db = -6
-prompt = The two information brokers agree to share their news, oud and santur playing together for
-    the first time, gentle reconciliation, a newsletter carried by the wind
+style = none
+prompt = Two rival news houses agree to write one newsletter together, oud and santur answering each
+    other then playing in unison, gentle reconciliation, warm and light, instrumental, no
+    vocals, seamless loop, game background music, subtle playful cat-like touches (light
+    plucked notes like soft paw steps, a tiny bell chime once or twice, a warm low purring
+    drone), no real cat meow sounds, no war drums, no battle music
 
 [scene.newsLetter]
-# scene.newsCall と対の和解の場面 (同じ曲)
+# required_music.md「한 곡을 두 이름으로」
 priority = 3
 copy_of = scene.newsCall
 
@@ -662,24 +718,37 @@ copy_of = scene.newsCall
 priority = 3
 duration = 45
 gain_db = -6
-prompt = Rival map workshops, a sealed sea-chart room in Lisbon and a printing house in Amsterdam,
-    lute and harpsichord trading careful, precise phrases, ink and parchment, quiet
-    concentration
+style = none
+prompt = A hushed chart room in Lisbon where secret sea charts are kept under seal, Iberian guitar
+    and soft viol, candlelight and old parchment, mysterious but kind, instrumental, no vocals,
+    seamless loop, game background music, subtle playful cat-like touches (light plucked notes
+    like soft paw steps, a tiny bell chime once or twice, a warm low purring drone), no real
+    cat meow sounds, no war drums, no battle music
 
 [scene.printhouse]
-# scene.sealedchart と対の세력 (同じ曲)
 priority = 3
-copy_of = scene.sealedchart
+duration = 45
+gain_db = -6
+style = none
+prompt = A busy Amsterdam print shop that prints maps for everyone, lute and recorder with the
+    gentle rhythmic clack of a printing press, cheerful and open, canal light, instrumental, no
+    vocals, seamless loop, game background music, subtle playful cat-like touches (light
+    plucked notes like soft paw steps, a tiny bell chime once or twice, a warm low purring
+    drone), no real cat meow sounds, no war drums, no battle music
 
 [scene.chartCall]
 priority = 3
 duration = 45
 gain_db = -6
-prompt = The two map workshops draw one chart together, lute and harpsichord in a gentle duet, the
-    coastlines of the world joined line by line, hopeful
+style = none
+prompt = Two rival map makers draw one shared sea chart together, Iberian guitar and lute duet
+    becoming one melody, discovery and friendship, bright and warm, instrumental, no vocals,
+    seamless loop, game background music, subtle playful cat-like touches (light plucked notes
+    like soft paw steps, a tiny bell chime once or twice, a warm low purring drone), no real
+    cat meow sounds, no war drums, no battle music
 
 [scene.sharedChart]
-# scene.chartCall と対の和解の場面 (同じ曲)
+# required_music.md「한 곡을 두 이름으로」
 priority = 3
 copy_of = scene.chartCall
 
@@ -687,23 +756,37 @@ copy_of = scene.chartCall
 priority = 3
 duration = 45
 gain_db = -6
-prompt = Rival painters' studios, a sunlit studio in Florence and a lamplit studio in Antwerp, lute
-    and viol trading graceful phrases, colors of daylight and candlelight, calm and artistic
+style = none
+prompt = A sunlit painter's studio in Florence, lute and harpsichord with soft strings, bright
+    colors and open windows, graceful Renaissance mood, instrumental, no vocals, seamless loop,
+    game background music, subtle playful cat-like touches (light plucked notes like soft paw
+    steps, a tiny bell chime once or twice, a warm low purring drone), no real cat meow sounds,
+    no war drums, no battle music
 
 [scene.lampstudio]
-# scene.sunstudio と対の세력 (同じ曲)
 priority = 3
-copy_of = scene.sunstudio
+duration = 45
+gain_db = -6
+style = none
+prompt = A lamplit painter's studio in Antwerp at evening, viol and recorder with a soft
+    harpsichord, deep warm shadows and quiet concentration, calm and intimate, instrumental, no
+    vocals, seamless loop, game background music, subtle playful cat-like touches (light
+    plucked notes like soft paw steps, a tiny bell chime once or twice, a warm low purring
+    drone), no real cat meow sounds, no war drums, no battle music
 
 [scene.brushCall]
 priority = 3
 duration = 45
 gain_db = -6
-prompt = The two studios paint one picture together, a brush of sunlight and a brush of lamplight,
-    lute and viol in a tender duet, warm and admiring
+style = none
+prompt = Two rival painting studios paint one picture together, sunlight and lamplight meeting, lute
+    and viol weaving one theme, tender and admiring, instrumental, no vocals, seamless loop,
+    game background music, subtle playful cat-like touches (light plucked notes like soft paw
+    steps, a tiny bell chime once or twice, a warm low purring drone), no real cat meow sounds,
+    no war drums, no battle music
 
 [scene.twoLights]
-# scene.brushCall と対の和解の場面 (同じ曲)
+# required_music.md「한 곡을 두 이름으로」
 priority = 3
 copy_of = scene.brushCall
 
@@ -711,5 +794,9 @@ copy_of = scene.brushCall
 priority = 3
 duration = 45
 gain_db = -6
-prompt = Just after the world trading house opens, a letter arrives from a rival merchant house,
-    curious and slightly tense but friendly, plucked strings and soft drums, a new challenge
+style = none
+prompt = Letters arrive from rival merchant houses across the world, a friendly challenge, light
+    strings with koto and lute trading short phrases, curious and spirited but never hostile,
+    instrumental, no vocals, seamless loop, game background music, subtle playful cat-like
+    touches (light plucked notes like soft paw steps, a tiny bell chime once or twice, a warm
+    low purring drone), no real cat meow sounds, no war drums, no battle music

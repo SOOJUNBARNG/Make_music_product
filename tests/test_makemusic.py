@@ -80,7 +80,7 @@ def test_load_requirements(req):
         ("[a]\nprompt = x\nduration = 5\n", "10〜600"),
         ("[a]\nprompt = x\nduraton = 30\n", "未知のキー"),
         ("[a]\ncopy_of = nothing\n", "参照先"),
-        (f"[a]\nprompt = {'x' * 600}\n", "512"),
+        (f"[a]\nprompt = {'x' * 1100}\n", "1024"),
         ("[a]\nprompt = x\nstyle = nope\n", "style_nope"),
     ],
 )
@@ -89,6 +89,15 @@ def test_invalid_requirements(tmp_path, track, error):
     path.write_text(track, encoding="utf-8")
     with pytest.raises(ValueError, match=error):
         load_requirements(path)
+
+
+def test_style_none_uses_prompt_as_is_and_long_caption_only_warns(tmp_path, caplog):
+    path = tmp_path / "req.txt"
+    long = "x" * 530
+    path.write_text(f"[settings]\nstyle = tail\n\n[a]\nstyle = none\nprompt = {long}\n", encoding="utf-8")
+    settings, [a] = load_requirements(path)
+    assert a.caption(settings) == long  # 共通スタイルを付けない
+    assert "目安" in caplog.text  # 512 文字を超えると警告だけ出る
 
 
 def test_bundled_requirements():
@@ -112,6 +121,10 @@ def test_bundled_requirements():
     # 既存曲のシードは並び順で決まるので、10-30 の 66 상자は先頭のまま (新しい상자は末尾に足す)
     assert [t.name for t in tracks[:2]] == ["title", "kr"] and tracks[65].name == "goal.2"
     assert tracks[66].name == "sam"
+    # required_music.md の 26 상자: 生成 20 + コピー 6。プロンプトは꼬리まで付いた完成形なので style = none
+    added = tracks[66:]
+    assert len(added) == 26 and sum(not t.copy_of for t in added) == 20
+    assert all(t.style == "none" for t in added if not t.copy_of)
     # 複数行の prompt を書くとき、ハイフンの位置で改行すると "marimba- like" のように空白が入ってしまう
     assert not [t.name for t in tracks if "- " in t.prompt]
     assert [t.name for t in select_tracks(tracks, max_priority=1)][:2] == ["title", "kr"]
