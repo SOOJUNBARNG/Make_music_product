@@ -26,7 +26,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 
 # 環境変数で渡した値を gcp.env より優先する
-_overrides="$(env | grep -E '^(PROJECT|ZONE|ZONE_CANDIDATES|VM_NAME|MACHINE_TYPE|SPOT|DISK_SIZE_GB|IMAGE_FAMILY|IMAGE_PROJECT|ACESTEP_REPO|AUTO_SHUTDOWN|KEEP_RUNNING)=' || true)"
+_overrides="$(env | grep -E '^(PROJECT|ZONE|ZONE_CANDIDATES|VM_NAME|MACHINE_TYPE|FETCH_MACHINE_TYPE|SPOT|DISK_SIZE_GB|IMAGE_FAMILY|IMAGE_PROJECT|ACESTEP_REPO|AUTO_SHUTDOWN|KEEP_RUNNING)=' || true)"
 # shellcheck source=gcp.env
 source "$HERE/gcp.env"
 while IFS= read -r kv; do [[ -n "$kv" ]] && export "${kv?}"; done <<< "$_overrides"
@@ -49,6 +49,8 @@ STARTED_HERE=0     # このコマンドで VM を起動したか
 GEN_STARTED=0      # run で VM 上の生成を開始できたか
 STOCKOUT=0         # VM を起動しようとしてゾーンの品切れで失敗したか
 STOCKOUT_RETURN=0  # 1 なら、品切れのとき ensure_running は終了せず 2 を返す (go が作り直すため)
+CPU_MODE=0         # fetch のために一時的に GPU なしのマシンへ切り替えているか
+FETCH_MACHINE_TYPE="${FETCH_MACHINE_TYPE:-e2-standard-4}"
 
 gc() { gcloud --project "$PROJECT" "$@"; }
 remote() { gc compute ssh "$VM_NAME" --zone "$ZONE" --quiet --command "$1"; }
@@ -350,11 +352,34 @@ cmd_status() {
 }
 
 cmd_fetch() {
+  local st; st="$(vm_status)"
+  [[ -n "$st" ]] || die "VM $VM_NAME がありません"
+  if [[ "$st" == TERMINATED ]]; then
+    # 止まっている = 生成は終わっている。取り出しに GPU は要らないので、GPU なしのマシンで起動する
+    # (GPU の品切れで起動できないことがあるため。終わったら finish で元のマシンに戻す)
+    log "GPU を使わずに取り出すため、一時的に $FETCH_MACHINE_TYPE に切り替えます (終わったら $MACHINE_TYPE に戻します)"
+    gc compute instances set-machine-type "$VM_NAME" --zone "$ZONE" --machine-type "$FETCH_MACHINE_TYPE"
+    CPU_MODE=1
+  fi
   ensure_running
+  remote "grep -E '^\\[[0-9]+/[0-9]+\\].*(完了|コピー|失敗)|^終了|^失敗した|^EXIT' ~/$REMOTE_DIR/run.log | tail -4" || true
   mkdir -p "$ROOT/music-source"
   log "WAV を $ROOT/music-source/ にコピーします"
   gc compute scp --zone "$ZONE" --quiet "$VM_NAME:$REMOTE_DIR/music-source/*.wav" "$ROOT/music-source/"
   echo "手元の曲数: $(find "$ROOT/music-source" -maxdepth 1 -name '*.wav' | wc -l | tr -d ' ')"
+}
+
+# fetch で GPU なしのマシンに切り替えていたら、止めてから元のマシンに戻す (失敗したときも必ず)
+restore_machine_type() {
+  (( CPU_MODE )) || return 0
+  CPU_MODE=0
+  if [[ "$(vm_status)" != TERMINATED ]]; then
+    log "VM を停止します"
+    gc compute instances stop "$VM_NAME" --zone "$ZONE" --quiet || true
+  fi
+  log "マシンを $MACHINE_TYPE に戻します"
+  gc compute instances set-machine-type "$VM_NAME" --zone "$ZONE" --machine-type "$MACHINE_TYPE" \
+    || echo "戻せませんでした。次を実行してください: gcloud --project $PROJECT compute instances set-machine-type $VM_NAME --zone $ZONE --machine-type $MACHINE_TYPE" >&2
 }
 
 cmd_ssh() { ensure_running; gc compute ssh "$VM_NAME" --zone "$ZONE"; }
@@ -415,6 +440,7 @@ recently_preempted() {
 finish() {
   local rc=$?
   trap - EXIT
+  restore_machine_type
   case "$CMD" in create|setup|move|run|go|fetch|ssh) ;; *) exit "$rc" ;; esac
   local st reason=""
   st="$(vm_status)"
