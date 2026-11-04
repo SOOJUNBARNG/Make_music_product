@@ -15,43 +15,32 @@ Google Cloud の L4 GPU で [ACE-Step 1.5](https://github.com/ACE-Step/ACE-Step-
 |---|---|
 | 10-30 の 66 상자 | ✅ 生成済み (生成 63 曲 + コピー 3 曲)。ゲームに組み込み済み |
 | required_music.md の 26 상자 | ⬜ **未生成**。要件ファイルの末尾に追加済み (生成 20 曲・約 20 分 + コピー 6 曲)。プロンプトは required_music.md の完成形をそのまま使用 |
-| 音楽用 VM `makemusic-l4` | 削除済み (費用ゼロ)。作り直しが必要 |
-| GPU の割り当て | ⚠️ 全体の上限 1 枚を、別の VM `portrait-gen` (asia-northeast1-c、T4) が使用中。**止めないと音楽用 VM を作れない** |
+| 音楽用 VM `makemusic-l4` | 2026-11-04 に us-east4-c に作成・setup 済みだが、setup 後に停止したあと品切れで起動できなくなった。`go` で空いているゾーンに作り直す |
+| GPU の割り当て | 全体の上限 1 枚。別の VM (`portrait-gen` など) が GPU を使っている間は音楽用 VM を作れない |
 | 手元の `music-source/` | 空 (66 曲はゲーム側へ移動済み) |
 
 ### 新しい 26 상자を作る手順
 
-1. **GPU を空ける**: `portrait-gen` を止めます (別の作業の VM なので、止めてよいか確認してから)。止めている間は GPU の割り当てが空きます
+**次のコマンド 1 つで、VM の用意から生成まで止まらずに進みます。**
 
-   ```bash
-   gcloud --project jpix-it compute instances stop portrait-gen --zone asia-northeast1-c
-   ```
+```bash
+infra/gcp.sh go --start-at sam
+```
 
-   止めたくない場合は、`GPUS_ALL_REGIONS` の上限を 2 に増やす申請をします (「手順 2」と同じ画面)
-2. **音楽用 VM を作る** (約 10 分。空いているゾーンを自動で探し、setup まで行って停止します)
+- **VM があるとき**: 起動します。そのゾーンが品切れで起動できなければ、確認のうえ VM を削除して、空いているゾーンに作り直します (VM の中身は ACE-Step だけなので、失うものはありません)
+- **VM が無いとき**: 44 ゾーンを順に試して作ります。全部品切れなら 10 分ごとに最大 6 時間やり直します
+- **setup のあと VM を止めずに、そのまま生成を始めます**。止めると再起動までの数分間に GPU を他の人に取られることがあるためです (2026-11-04、us-east4-c で実際に起きた)
+- `--start-at sam` で、要件ファイルの `sam` から後ろ = required_music.md の 26 상자 (生成 20 曲 + コピー 6 曲) だけを作ります。付けないと 92 상자すべてを作り直すので注意してください
+- 生成が終わると VM は自動で停止します。生成の前に失敗したときも VM は自動で止まります
 
-   ```bash
-   infra/gcp.sh create --wait
-   ```
+そのあと:
 
-3. **新しい 26 상자だけ生成する** (約 20 分。`--start-at sam` で、要件ファイルの `sam` から後ろ = 追加分だけを作ります)
+1. **進み具合を見る**: `infra/gcp.sh status` (VM が `TERMINATED` になれば完了)
+2. **手元にコピーする**: `infra/gcp.sh fetch`
+3. **ゲームに組み込む**: `music-source/` の 26 個の WAV をゲーム側の `music-source/` に入れて `tools/add-music.sh`
+4. **後片付け**: 作り直さないなら `infra/gcp.sh delete`
 
-   ```bash
-   infra/gcp.sh run --start-at sam
-   ```
-
-4. **終わったら手元にコピーする** (`status` で VM が `TERMINATED` になったのを確認してから)
-
-   ```bash
-   infra/gcp.sh fetch
-   ```
-
-5. **ゲームに組み込む**: `music-source/` の 26 個の WAV をゲーム側の `music-source/` に入れて `tools/add-music.sh`
-6. **後片付け**: 作り直さないなら `infra/gcp.sh delete`。`portrait-gen` を止めた場合は、必要なら起動し直します
-
-費用は VM の作成 10 分 + 生成 20 分ほどで、通常料金で **約 0.5 ドル** の見込みです。
-
-> 音楽用 VM を消したので、VM 上にあった 66 曲と生成の記録 (`.wav.json`) も消えています。`--start-at` を付けずに `run` すると、66 曲も含めて 92 曲すべてを作り直すので注意してください (約 50 分)。
+費用は setup 10 分 + 生成 20 分ほどで、通常料金で **約 0.5 ドル** の見込みです。
 
 ### 66 상자の生成結果 (2026-10-30)
 
@@ -313,6 +302,7 @@ infra/gcp.sh run --only kr jp --overwrite
 |---|---|---|
 | `enable` | Compute Engine API を有効化 | なし |
 | `quota` | L4 GPU の割り当てを確認 | なし |
+| `go [引数]` | **おすすめ**。VM を起動 (品切れなら確認のうえ別ゾーンに作り直し)、必要なら `setup`、止めずにそのまま `run [引数]` まで行う | VM が動く |
 | `create [--wait [時間]]` | VM を作成し、続けて `setup` して停止する (品切れのゾーンは飛ばす。`--wait` で空くまで再試行) | ここから開始 |
 | `setup` | ACE-Step 1.5 とモデルを VM に入れる | VM が動く |
 | `run [引数]` | コードと要件ファイルを送って生成開始。終わると自動停止 | VM が動く |
@@ -432,7 +422,7 @@ ACE-Step の説明ではプロンプトは 512 文字未満が目安です (コ�
 | `setup` の `uv sync` やダウンロードで失敗 | ネットワークの一時的なエラーのことが多い。もう一度 `setup` を実行する |
 | 生成が `vllm` 関係のエラーで止まる | `music_requirements.txt` の `lm_backend = pt` に変えて `run` し直す |
 | `status` で VM が `TERMINATED` なのに曲が足りない | 生成の途中で止まった (Spot の回収など)。`run` をもう一度実行すれば続きから再開する |
-| 「〜には今 L4 の空きがありません (VM を起動できませんでした)」と出る | 止めてある VM のゾーンで L4 が品切れ。時間をおいて再実行するか、`infra/gcp.sh delete` のあと `infra/gcp.sh create --wait` で空いているゾーンに作り直す (ACE-Step とモデルは自動で入れ直す。生成済みの曲は先に `fetch` しておく) |
+| 「〜には今 L4 の空きがありません (VM を起動できませんでした)」と出る | 止めてある VM のゾーンで L4 が品切れ。`infra/gcp.sh go <run の引数>` を使うと、確認のうえ空いているゾーンに作り直して、そのまま生成まで進む |
 | 「Spot VM が Google に回収されました (preempted)」と出る | そのゾーンの L4 が混み合っていて、Spot VM がすぐ止められている。時間をおいて再実行するか、`infra/gcp.sh spot off` で通常料金 (約 0.85 ドル/時間) に切り替える。`infra/gcp.env` の `SPOT=false` も合わせて変えておく |
 | 特定の曲だけ失敗した | ログの最後に「失敗した상자」が出る。`run --only <상자>` で作り直す |
 | 音のイメージが違う | `prompt` を具体的に書き直すか `seed` を変えて `run` (変えた曲だけ作り直される) |

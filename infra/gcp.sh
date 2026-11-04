@@ -3,6 +3,8 @@
 #
 #   infra/gcp.sh enable      Compute Engine API を有効化
 #   infra/gcp.sh quota       L4 GPU の割り当てを確認
+#   infra/gcp.sh go [引数]   VM を用意して (無ければ作成・setup、品切れなら作り直し)、止めずにそのまま生成まで行う
+#                            例: infra/gcp.sh go --start-at sam   (空きの少ないときはこれがいちばん確実)
 #   infra/gcp.sh create      VM を作成して setup まで行い、停止する (空きの無いゾーンは飛ばす)
 #                            --wait [時間]: どこにも空きが無ければ 10 分ごとに再試行 (既定 6 時間)
 #   infra/gcp.sh setup       VM に ACE-Step 1.5 とモデルを入れる (初回のみ・再実行しても安全)
@@ -46,6 +48,7 @@ CMD=""             # 実行中のサブコマンド
 STARTED_HERE=0     # このコマンドで VM を起動したか
 GEN_STARTED=0      # run で VM 上の生成を開始できたか
 STOCKOUT=0         # VM を起動しようとしてゾーンの品切れで失敗したか
+STOCKOUT_RETURN=0  # 1 なら、品切れのとき ensure_running は終了せず 2 を返す (go が作り直すため)
 
 gc() { gcloud --project "$PROJECT" "$@"; }
 remote() { gc compute ssh "$VM_NAME" --zone "$ZONE" --quiet --command "$1"; }
@@ -77,6 +80,10 @@ ensure_running() {
     if ! out="$(gc compute instances start "$VM_NAME" --zone "$ZONE" 2>&1)"; then
       if grep -qE "ZONE_RESOURCE_POOL_EXHAUSTED|STOCKOUT|does not have enough resources" <<< "$out"; then
         STOCKOUT=1
+        if (( STOCKOUT_RETURN )); then
+          echo "→ $ZONE には今 L4 の空きがありません (VM を起動できませんでした)"
+          return 2
+        fi
         # GCP がエラーの中で「空きのあるゾーン」を教えてくれることがある
         local avail
         avail="$(sed -nE 's/^ *zonesAvailable: *//p' <<< "$out" | tr -d "'\"" | tr ',' ' ' | xargs)"
@@ -213,11 +220,21 @@ cmd_create() {
   done
   # 記録と違うゾーンに VM が残っていないかも確かめる (同時に作れるのは全体で 1 台)
   local existing
-  existing="$(gc compute instances list --filter="name=$VM_NAME" --format='value(zone.basename())' 2>/dev/null | head -1)"
+  existing="$(find_vm_zone)"
   if [[ -n "$existing" ]]; then
     echo "$existing" > "$ZONE_FILE"
     die "VM $VM_NAME はすでに $existing にあります。使うなら infra/gcp.sh setup / run、作り直すなら infra/gcp.sh delete のあとに create"
   fi
+  create_vm "$wait_hours"
+  log "続けて setup を実行します (GPU ドライバの準備を待ってから始まります)"
+  cmd_setup
+}
+
+find_vm_zone() { gc compute instances list --filter="name=$VM_NAME" --format='value(zone.basename())' 2>/dev/null | head -1; }
+
+# 空きのあるゾーンを探して VM を作る。wait_hours > 0 なら、全部品切れのとき 10 分ごとにやり直す
+create_vm() {
+  local wait_hours="$1"
   local family; family="$(pick_image_family)"
   # ZONE を環境変数で指定したときはそのゾーンだけ、それ以外は候補を順に試す
   local zones="$ZONE"
@@ -236,8 +253,42 @@ cmd_create() {
   ZONE="$CREATED_ZONE"
   echo "$ZONE" > "$ZONE_FILE"
   echo "作成しました (ゾーン: $ZONE)。以降のコマンドは自動でこのゾーンを使います"
-  log "続けて setup を実行します (GPU ドライバの準備を待ってから始まります)"
-  cmd_setup
+}
+
+# 止めずに最後まで: VM を起動 (品切れなら確認のうえ別ゾーンに作り直し) → 必要なら setup → run。
+# setup のあと VM を止めると、再起動までの間に GPU を他の人に取られることがあるため
+cmd_go() {
+  local existing; existing="$(find_vm_zone)"
+  if [[ -n "$existing" ]]; then
+    ZONE="$existing"
+    echo "$ZONE" > "$ZONE_FILE"
+    local rc=0
+    STOCKOUT_RETURN=1
+    ensure_running || rc=$?
+    STOCKOUT_RETURN=0
+    if (( rc == 2 )); then
+      echo "VM を空いているゾーンに作り直します。VM の中の ACE-Step と生成済みの曲は消えます (ACE-Step は自動で入れ直します)。"
+      local yn
+      read -r -p "生成済みの曲は fetch してありますか? 作り直しますか? [y/N] " yn
+      [[ "$yn" == [yY] ]] || { echo 中止しました; return 1; }
+      log "VM を削除 ($ZONE)"
+      gc compute instances delete "$VM_NAME" --zone "$ZONE" --quiet
+      rm -f "$ZONE_FILE"
+      existing=""
+      STOCKOUT=0
+    elif (( rc != 0 )); then
+      return "$rc"
+    fi
+  fi
+  if [[ -z "$existing" ]]; then
+    create_vm 6
+    log "続けて setup を実行します (止めずにそのまま生成に進みます)"
+    cmd_setup
+  elif ! remote "test -x ~/$ACESTEP_DIR/.venv/bin/python && test -d ~/$ACESTEP_DIR/checkpoints/acestep-v15-xl-turbo" >/dev/null 2>&1; then
+    log "ACE-Step がまだ入っていないので setup を実行します"
+    cmd_setup
+  fi
+  cmd_run "$@"
 }
 
 cmd_setup() {
@@ -364,20 +415,20 @@ recently_preempted() {
 finish() {
   local rc=$?
   trap - EXIT
-  case "$CMD" in create|setup|move|run|fetch|ssh) ;; *) exit "$rc" ;; esac
+  case "$CMD" in create|setup|move|run|go|fetch|ssh) ;; *) exit "$rc" ;; esac
   local st reason=""
   st="$(vm_status)"
   if [[ "$st" == RUNNING ]]; then
     if (( rc != 0 )); then
       # fetch・ssh は、もともと動いていた VM (生成中かもしれない) は止めない
-      if [[ "$CMD" == create || "$CMD" == setup || "$CMD" == move ]] || { [[ "$CMD" == run ]] && (( ! GEN_STARTED )); } || (( STARTED_HERE )); then
+      if [[ "$CMD" == create || "$CMD" == setup || "$CMD" == move ]] || { [[ "$CMD" == run || "$CMD" == go ]] && (( ! GEN_STARTED )); } || (( STARTED_HERE )); then
         reason="失敗したので"
       else
         echo "VM は動いたままです (生成中かもしれないため止めていません)。不要なら infra/gcp.sh stop で止めてください"
       fi
     elif [[ "$CMD" == create || "$CMD" == setup || "$CMD" == move ]]; then
       reason="セットアップが終わったので"
-    elif [[ "$CMD" != run ]] && (( STARTED_HERE )); then
+    elif [[ "$CMD" != run && "$CMD" != go ]] && (( STARTED_HERE )); then
       reason="このコマンドのために起動したので"
     fi
     if [[ -n "$reason" ]]; then
@@ -409,7 +460,7 @@ main() {
   CMD="$cmd"
   trap finish EXIT
   case "$cmd" in
-    enable|quota|create|setup|run|status|fetch|ssh|stop|delete|spot|move) "cmd_$cmd" "$@" ;;
+    enable|quota|create|setup|run|go|status|fetch|ssh|stop|delete|spot|move) "cmd_$cmd" "$@" ;;
     *) usage; [[ -z "$cmd" ]] || exit 2 ;;
   esac
 }
