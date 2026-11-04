@@ -49,7 +49,7 @@ STARTED_HERE=0     # このコマンドで VM を起動したか
 GEN_STARTED=0      # run で VM 上の生成を開始できたか
 STOCKOUT=0         # VM を起動しようとしてゾーンの品切れで失敗したか
 STOCKOUT_RETURN=0  # 1 なら、品切れのとき ensure_running は終了せず 2 を返す (go が作り直すため)
-CPU_MODE=0         # fetch のために一時的に GPU なしのマシンへ切り替えているか
+HELPER_VM=""       # fetch 用に作った一時 VM の名前 (終了時に必ず消す)
 FETCH_MACHINE_TYPE="${FETCH_MACHINE_TYPE:-e2-standard-4}"
 
 gc() { gcloud --project "$PROJECT" "$@"; }
@@ -354,32 +354,46 @@ cmd_status() {
 cmd_fetch() {
   local st; st="$(vm_status)"
   [[ -n "$st" ]] || die "VM $VM_NAME がありません"
+  local host="$VM_NAME"
   if [[ "$st" == TERMINATED ]]; then
-    # 止まっている = 生成は終わっている。取り出しに GPU は要らないので、GPU なしのマシンで起動する
-    # (GPU の品切れで起動できないことがあるため。終わったら finish で元のマシンに戻す)
-    log "GPU を使わずに取り出すため、一時的に $FETCH_MACHINE_TYPE に切り替えます (終わったら $MACHINE_TYPE に戻します)"
-    gc compute instances set-machine-type "$VM_NAME" --zone "$ZONE" --machine-type "$FETCH_MACHINE_TYPE"
-    CPU_MODE=1
+    # 止まっている = 生成は終わっている。取り出しに GPU は要らないので、ディスクを複製して
+    # GPU なしの一時 VM で取り出す (GPU の品切れでも取り出せる。元の VM には触らない)
+    host="$VM_NAME-fetch"
+    log "GPU を使わずに取り出すため、ディスクを複製して一時 VM ($FETCH_MACHINE_TYPE) を作ります (元の VM はそのまま)"
+    HELPER_VM="$host"
+    gc compute disks create "$host" --zone "$ZONE" --source-disk "$VM_NAME" --type pd-balanced --quiet
+    gc compute instances create "$host" --zone "$ZONE" --machine-type "$FETCH_MACHINE_TYPE" \
+      --disk "name=$host,boot=yes,auto-delete=yes" --quiet
+    local i
+    for i in $(seq 1 30); do
+      gc compute ssh "$host" --zone "$ZONE" --quiet --ssh-flag="-o ConnectTimeout=10" --command true >/dev/null 2>&1 && break
+      (( i == 1 )) && echo "一時 VM の SSH が使えるようになるのを待っています..."
+      (( i == 30 )) && die "一時 VM に SSH で接続できません"
+      sleep 10
+    done
+  else
+    ensure_running
   fi
-  ensure_running
-  remote "grep -E '^\\[[0-9]+/[0-9]+\\].*(完了|コピー|失敗)|^終了|^失敗した|^EXIT' ~/$REMOTE_DIR/run.log | tail -4" || true
+  gc compute ssh "$host" --zone "$ZONE" --quiet --command \
+    "grep -E '^\\[[0-9]+/[0-9]+\\].*(完了|コピー|失敗)|^終了|^失敗した|^EXIT' ~/$REMOTE_DIR/run.log | tail -4" || true
   mkdir -p "$ROOT/music-source"
   log "WAV を $ROOT/music-source/ にコピーします"
-  gc compute scp --zone "$ZONE" --quiet "$VM_NAME:$REMOTE_DIR/music-source/*.wav" "$ROOT/music-source/"
+  gc compute scp --zone "$ZONE" --quiet "$host:$REMOTE_DIR/music-source/*.wav" "$ROOT/music-source/"
   echo "手元の曲数: $(find "$ROOT/music-source" -maxdepth 1 -name '*.wav' | wc -l | tr -d ' ')"
 }
 
-# fetch で GPU なしのマシンに切り替えていたら、止めてから元のマシンに戻す (失敗したときも必ず)
-restore_machine_type() {
-  (( CPU_MODE )) || return 0
-  CPU_MODE=0
-  if [[ "$(vm_status)" != TERMINATED ]]; then
-    log "VM を停止します"
-    gc compute instances stop "$VM_NAME" --zone "$ZONE" --quiet || true
+# fetch 用の一時 VM とディスクを消す (失敗したときも必ず)
+cleanup_helper() {
+  [[ -n "$HELPER_VM" ]] || return 0
+  local h="$HELPER_VM"
+  HELPER_VM=""
+  log "一時 VM ($h) とそのディスクを削除します"
+  gc compute instances delete "$h" --zone "$ZONE" --quiet >/dev/null 2>&1 || true
+  # VM を作る前に失敗した場合は、ディスクだけ残っている
+  if gc compute disks describe "$h" --zone "$ZONE" --format='value(name)' >/dev/null 2>&1; then
+    gc compute disks delete "$h" --zone "$ZONE" --quiet >/dev/null 2>&1 \
+      || echo "一時ディスク $h を消せませんでした。次を実行してください: gcloud --project $PROJECT compute disks delete $h --zone $ZONE" >&2
   fi
-  log "マシンを $MACHINE_TYPE に戻します"
-  gc compute instances set-machine-type "$VM_NAME" --zone "$ZONE" --machine-type "$MACHINE_TYPE" \
-    || echo "戻せませんでした。次を実行してください: gcloud --project $PROJECT compute instances set-machine-type $VM_NAME --zone $ZONE --machine-type $MACHINE_TYPE" >&2
 }
 
 cmd_ssh() { ensure_running; gc compute ssh "$VM_NAME" --zone "$ZONE"; }
@@ -440,7 +454,7 @@ recently_preempted() {
 finish() {
   local rc=$?
   trap - EXIT
-  restore_machine_type
+  cleanup_helper
   case "$CMD" in create|setup|move|run|go|fetch|ssh) ;; *) exit "$rc" ;; esac
   local st reason=""
   st="$(vm_status)"
