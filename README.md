@@ -7,19 +7,19 @@ Google Cloud の L4 GPU で [ACE-Step 1.5](https://github.com/ACE-Step/ACE-Step-
 曲の要件は、[music-brief.md](music-brief.md)「음악 의뢰서」(2026-11-03、92 상자) と、まだ空の 26 상자をまとめた `required_music.md` (2026-11-04) に合わせています。
 全曲の方向は「지역의 소리 + 살짝 고양이」(その地域の楽器が主役で、猫らしさは軽い味付け) です。
 
-## 現在の状況 (2026-11-03)
+## 現在の状況 (2026-11-04)
 
-**의뢰서が 92 상자に増え、新しい 26 상자がまだ空です。** `required_music.md` の 26 상자を要件ファイルに追加済みで、あとは生成するだけです (下の「新しい 26 상자を作る手順」)。
+**의뢰서の 92 상자すべての曲が出来ました。** 11-04 に required_music.md の 26 상자を生成し、手元の `music-source/` に取り出し済みです。あとはゲームに組み込むだけです。
 
 | 段階 | 状態 |
 |---|---|
-| 10-30 の 66 상자 | ✅ 生成済み (生成 63 曲 + コピー 3 曲)。ゲームに組み込み済み |
-| required_music.md の 26 상자 | ⬜ **未生成**。要件ファイルの末尾に追加済み (生成 20 曲・約 20 分 + コピー 6 曲)。プロンプトは required_music.md の完成形をそのまま使用 |
-| 音楽用 VM `makemusic-l4` | 2026-11-04 に us-east4-c に作成・setup 済みだが、setup 後に停止したあと品切れで起動できなくなった。`go` で空いているゾーンに作り直す |
-| GPU の割り当て | 全体の上限 1 枚。別の VM (`portrait-gen` など) が GPU を使っている間は音楽用 VM を作れない |
-| 手元の `music-source/` | 空 (66 曲はゲーム側へ移動済み) |
+| 10-30 の 66 상자 | ✅ 生成済み・ゲームに組み込み済み |
+| required_music.md の 26 상자 | ✅ 2026-11-04 生成 (生成 20 曲 + コピー 6 曲、失敗 0、生成 13.4 分)。`music-source/` に WAV 26 個 (合計約 25 分、287MB) |
+| 自動チェック (26 상자) | ✅ 名前が required_music.md と一致、48kHz ステレオ、要件どおりの長さ、ピーク -1dBFS (会話シーンは -7dBFS)、ループのつなぎ目に段差なし、静かな出だし |
+| 耳での確認・ゲームへの組み込み | ⬜ まだ (`music-source/` の 26 個をゲーム側の `music-source/` に入れて `tools/add-music.sh`) |
+| 音楽用 VM `makemusic-l4` | us-west4-c で **停止中** (ディスク代だけ。作り直さないなら `infra/gcp.sh delete`) |
 
-### 新しい 26 상자を作る手順
+### 新しい상자を作る手順 (11-04 に実施した流れ)
 
 **次のコマンド 1 つで、VM の用意から生成まで止まらずに進みます。**
 
@@ -40,7 +40,9 @@ infra/gcp.sh go --start-at sam
 3. **ゲームに組み込む**: `music-source/` の 26 個の WAV をゲーム側の `music-source/` に入れて `tools/add-music.sh`
 4. **後片付け**: 作り直さないなら `infra/gcp.sh delete`
 
-費用は setup 10 分 + 生成 20 分ほどで、通常料金で **約 0.5 ドル** の見込みです。
+費用は setup 10 分 + 生成 15〜20 分ほどで、通常料金で **約 0.5 ドル** です。
+
+実際の 11-04 は、`create` (us-west4-c に作成・setup、動かしたまま) → `run --start-at sam` → 生成後に VM が自動停止 → `fetch` (GPU の品切れで VM を起動できなかったため、ディスクの複製から GPU なしの一時 VM で取り出し) の順でした。
 
 ### 66 상자の生成結果 (2026-10-30)
 
@@ -256,7 +258,10 @@ VM が `TERMINATED` (停止) と表示されたら、生成が終わって自動
 infra/gcp.sh fetch
 ```
 
-`music-source/` に WAV がコピーされます。止まっている VM は自動で起動し、コピーが終わると自動で停止します。
+`music-source/` に WAV がコピーされます。
+
+- **VM が止まっているとき** (生成が終わって自動停止したあと): GPU は要らないので、VM のディスクを複製して **GPU なしの一時 VM (`e2-standard-4`)** で取り出し、一時 VM とディスクはすぐ削除します。GPU が品切れでも取り出せ、元の VM には触りません (数分・数セント)
+- **VM が動いているとき** (生成中など): そのまま取り出します
 
 コピーした WAV は、ゲーム側 (`Global_trading_game_product`) の `music-source/` に入れて、ゲーム側で `tools/add-music.sh` を実行すれば、ゲームに組み込まれます。
 
@@ -307,7 +312,7 @@ infra/gcp.sh run --only kr jp --overwrite
 | `setup` | ACE-Step 1.5 とモデルを VM に入れる | VM が動く |
 | `run [引数]` | コードと要件ファイルを送って生成開始。終わると自動停止 | VM が動く |
 | `status` | VM の状態と生成ログの末尾を表示 | なし |
-| `fetch` | 生成した WAV を手元の `music-source/` にコピー (止まっていれば起動) | VM が動く |
+| `fetch` | 生成した WAV を手元の `music-source/` にコピー (止まっていれば、ディスクの複製から GPU なしの一時 VM で取り出す) | 一時 VM が数分 |
 | `ssh` | VM にログイン | VM が動く |
 | `stop` | VM を停止 | ディスク代だけ |
 | `delete` | VM をディスクごと削除 | 止まる |
@@ -422,6 +427,7 @@ ACE-Step の説明ではプロンプトは 512 文字未満が目安です (コ�
 | `setup` の `uv sync` やダウンロードで失敗 | ネットワークの一時的なエラーのことが多い。もう一度 `setup` を実行する |
 | 生成が `vllm` 関係のエラーで止まる | `music_requirements.txt` の `lm_backend = pt` に変えて `run` し直す |
 | `status` で VM が `TERMINATED` なのに曲が足りない | 生成の途中で止まった (Spot の回収など)。`run` をもう一度実行すれば続きから再開する |
+| `fetch` で「VM を起動できませんでした」と出る (古い版) | `git pull` で最新にする。今の `fetch` は止まっている VM を起動せず、GPU なしの一時 VM で取り出す |
 | 「〜には今 L4 の空きがありません (VM を起動できませんでした)」と出る | 止めてある VM のゾーンで L4 が品切れ。`infra/gcp.sh go <run の引数>` を使うと、確認のうえ空いているゾーンに作り直して、そのまま生成まで進む |
 | 「Spot VM が Google に回収されました (preempted)」と出る | そのゾーンの L4 が混み合っていて、Spot VM がすぐ止められている。時間をおいて再実行するか、`infra/gcp.sh spot off` で通常料金 (約 0.85 ドル/時間) に切り替える。`infra/gcp.env` の `SPOT=false` も合わせて変えておく |
 | 特定の曲だけ失敗した | ログの最後に「失敗した상자」が出る。`run --only <상자>` で作り直す |
@@ -433,6 +439,7 @@ ACE-Step の説明ではプロンプトは 512 文字未満が目安です (コ�
 infra/gcp.sh             GCP の操作 (enable / quota / create / setup / run / status / fetch / ssh / stop / delete / spot / move)
 infra/gcp.env            GCP の設定 (プロジェクト・ゾーン・マシン・Spot など)
 infra/.vm-zone           VM を作れたゾーンの記録 (create が書く。Git 管理外)
+                         (fetch は一時的に <VM 名>-fetch という VM とディスクを作り、終わると消す)
 make_music.py            VM 上で全曲を生成するエントリポイント
 music_requirements.txt   92 상자ぶんの要件 (음악 의뢰서のプロンプトを使用。新しい상자は末尾に足す)
 music-brief.md           음악 의뢰서 (要件の元)
