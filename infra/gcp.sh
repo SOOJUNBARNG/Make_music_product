@@ -5,7 +5,7 @@
 #   infra/gcp.sh quota       L4 GPU の割り当てを確認
 #   infra/gcp.sh go [引数]   VM を用意して (無ければ作成・setup、品切れなら作り直し)、止めずにそのまま生成まで行う
 #                            例: infra/gcp.sh go --start-at sam   (空きの少ないときはこれがいちばん確実)
-#   infra/gcp.sh create      VM を作成して setup まで行い、停止する (空きの無いゾーンは飛ばす)
+#   infra/gcp.sh create      VM を作成して setup まで行い、動かしたままにする (空きの無いゾーンは飛ばす)
 #                            --wait [時間]: どこにも空きが無ければ 10 分ごとに再試行 (既定 6 時間)
 #   infra/gcp.sh setup       VM に ACE-Step 1.5 とモデルを入れる (初回のみ・再実行しても安全)
 #   infra/gcp.sh run [引数]  コードと要件ファイルを送って生成開始 (例: run --priority 1)
@@ -18,7 +18,7 @@
 #   infra/gcp.sh move ZONE   VM を指定ゾーンに作り直して setup する (品切れ対策)
 #
 # 設定は infra/gcp.env。gcloud の既定プロジェクトは変更せず、毎回 --project を付ける。
-# setup・run・fetch・ssh が失敗したとき、setup が終わったときは VM を自動で停止する
+# setup・run・fetch・ssh が失敗したとき、setup 単体が終わったときは VM を自動で停止する (create・move の後は止めない)
 # (止めたくないときは KEEP_RUNNING=true を付ける)。
 set -euo pipefail
 
@@ -426,7 +426,11 @@ finish() {
       else
         echo "VM は動いたままです (生成中かもしれないため止めていません)。不要なら infra/gcp.sh stop で止めてください"
       fi
-    elif [[ "$CMD" == create || "$CMD" == setup || "$CMD" == move ]]; then
+    elif [[ "$CMD" == create || "$CMD" == move ]]; then
+      # 止めると、run で起動し直すまでの間に GPU を他の人に取られることがあるので動かしたままにする
+      echo "VM は動いたままです (GPU の課金中)。続けて infra/gcp.sh run を実行してください (生成が終わると自動で止まります)"
+      echo "今は生成しないなら infra/gcp.sh stop で止めてください"
+    elif [[ "$CMD" == setup ]]; then
       reason="セットアップが終わったので"
     elif [[ "$CMD" != run && "$CMD" != go ]] && (( STARTED_HERE )); then
       reason="このコマンドのために起動したので"
